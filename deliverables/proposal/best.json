@@ -1,0 +1,5 @@
+{
+  "scene_id": "proposal-099",
+  "region_iou": 0.9740334679746105,
+  "method": "unet_temporal_post"
+}

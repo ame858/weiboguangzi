@@ -1,0 +1,58 @@
+{
+  "format_version": 1,
+  "architecture": "smp.Unet/resnet18/depth3",
+  "input_scale": 1,
+  "history_frames": 0,
+  "small_area_reference": null,
+  "temporal": true,
+  "noise_augmentation": false,
+  "mean": [
+    0.6943426728248596,
+    0.0007843017810955644
+  ],
+  "std": [
+    0.3549228310585022,
+    0.3007766902446747
+  ],
+  "best_epoch": 3,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.19835838278134663,
+      "validation_loss": 0.4240780343612035
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.18807419240474701,
+      "validation_loss": 0.42751081585884093
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.17537844280401865,
+      "validation_loss": 0.42181059817473093
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.17037126670281091,
+      "validation_loss": 0.4287251750628153
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.16260209331909817,
+      "validation_loss": 0.4335377444823583
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.15839955483873686,
+      "validation_loss": 0.4348714917898178
+    }
+  ],
+  "trainable_parameters": 817325,
+  "checkpoint": "continued.pt",
+  "weight_sha256": "14af0a50c5c1674db450547c8827ea8b0bf42f5e0a34f0b6ffdb49e723cc80d8",
+  "registered": true,
+  "parent_weight_sha256": "0a836e14e1b8826407c4aa2ccf1d7dfc714bed24d89f65a484f92d818afe3eaa",
+  "threshold": 0.08,
+  "min_area": 12,
+  "closing": true
+}

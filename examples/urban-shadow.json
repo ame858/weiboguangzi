@@ -1,0 +1,12 @@
+{
+  "scene": "geometry",
+  "background": "clutter",
+  "frames": 24,
+  "frame_interval_s": 0.2,
+  "noise": 0.12,
+  "seed": 42,
+  "method": "threshold",
+  "threshold": 0.45,
+  "min_area": 4,
+  "max_gap": 2
+}

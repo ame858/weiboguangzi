@@ -1,0 +1,71 @@
+{
+  "train_validation_dataset_sha256": "77f760daebc3e92612d00bce96726121a063a25c7a9111ba8c49caf1d7963422",
+  "test_dataset_sha256": "208ca1e466002678097bf1d7ab766700dab7085e29e00347b09c9e9e0fb2f0f5",
+  "normal_recall_reference": 0.975,
+  "historical": {
+    "weight_sha256": "0a836e14e1b8826407c4aa2ccf1d7dfc714bed24d89f65a484f92d818afe3eaa",
+    "setting": {
+      "threshold": 0.3,
+      "min_area": 12,
+      "closing": true
+    }
+  },
+  "candidates": {
+    "unet_scratch": {
+      "weight_sha256": "b57a759506f908c91012d6058861df6149d3737407f3bf012c29c1824d28b53c",
+      "setting": {
+        "threshold": 0.7,
+        "min_area": 12,
+        "closing": true,
+        "false_positive": 61,
+        "precision": 0.8063492063492064,
+        "recall": 0.7055555555555556,
+        "target_f1": 0.7525925925925926,
+        "normal_recall": 0.9416666666666667,
+        "small_recall": 0.5875
+      }
+    },
+    "fpn": {
+      "weight_sha256": "c19cae4c0d2925735656d99789a4185e3a63bd9ec2c1afc07fac53a356fa7090",
+      "setting": {
+        "threshold": 0.7,
+        "min_area": 8,
+        "closing": true,
+        "false_positive": 59,
+        "precision": 0.8138801261829653,
+        "recall": 0.7166666666666667,
+        "target_f1": 0.7621861152141802,
+        "normal_recall": 0.925,
+        "small_recall": 0.6125
+      }
+    },
+    "lraspp": {
+      "weight_sha256": "848bd3216b9424f77db747138b9437612c4ae6b96106bde33db937ec79dac466",
+      "setting": {
+        "threshold": 0.0115,
+        "min_area": 24,
+        "closing": true,
+        "false_positive": 308,
+        "precision": 0.034482758620689655,
+        "recall": 0.030555555555555555,
+        "target_f1": 0.03240058910162003,
+        "normal_recall": 0.08333333333333333,
+        "small_recall": 0.004166666666666667
+      }
+    },
+    "unet_2x": {
+      "weight_sha256": "7b8033b301cbed1fbfd64aaafe97df4c2651d4ee6371a499c7f85d31df2f2b6c",
+      "setting": {
+        "threshold": 0.2,
+        "min_area": 12,
+        "closing": true,
+        "false_positive": 66,
+        "precision": 0.8035714285714286,
+        "recall": 0.75,
+        "target_f1": 0.7758620689655172,
+        "normal_recall": 0.9833333333333333,
+        "small_recall": 0.6333333333333333
+      }
+    }
+  }
+}

@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "seed": 42,
+  "entries": [
+    {
+      "path": "scene-000",
+      "scene_id": "scene-000",
+      "trajectory_family": "scene-000",
+      "split": "train",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-001",
+      "scene_id": "scene-001",
+      "trajectory_family": "scene-001",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-002",
+      "scene_id": "scene-002",
+      "trajectory_family": "scene-002",
+      "split": "train",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-003",
+      "scene_id": "scene-003",
+      "trajectory_family": "scene-003",
+      "split": "train",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-004",
+      "scene_id": "scene-004",
+      "trajectory_family": "scene-004",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-005",
+      "scene_id": "scene-005",
+      "trajectory_family": "scene-005",
+      "split": "train",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-006",
+      "scene_id": "scene-006",
+      "trajectory_family": "scene-006",
+      "split": "train",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-007",
+      "scene_id": "scene-007",
+      "trajectory_family": "scene-007",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-008",
+      "scene_id": "scene-008",
+      "trajectory_family": "scene-008",
+      "split": "train",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-009",
+      "scene_id": "scene-009",
+      "trajectory_family": "scene-009",
+      "split": "train",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-010",
+      "scene_id": "scene-010",
+      "trajectory_family": "scene-010",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-011",
+      "scene_id": "scene-011",
+      "trajectory_family": "scene-011",
+      "split": "train",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-012",
+      "scene_id": "scene-012",
+      "trajectory_family": "scene-012",
+      "split": "train",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-013",
+      "scene_id": "scene-013",
+      "trajectory_family": "scene-013",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-014",
+      "scene_id": "scene-014",
+      "trajectory_family": "scene-014",
+      "split": "train",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-015",
+      "scene_id": "scene-015",
+      "trajectory_family": "scene-015",
+      "split": "validation",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-016",
+      "scene_id": "scene-016",
+      "trajectory_family": "scene-016",
+      "split": "validation",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-017",
+      "scene_id": "scene-017",
+      "trajectory_family": "scene-017",
+      "split": "validation",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-018",
+      "scene_id": "scene-018",
+      "trajectory_family": "scene-018",
+      "split": "validation",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-019",
+      "scene_id": "scene-019",
+      "trajectory_family": "scene-019",
+      "split": "validation",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-020",
+      "scene_id": "scene-020",
+      "trajectory_family": "scene-020",
+      "split": "validation",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-021",
+      "scene_id": "scene-021",
+      "trajectory_family": "scene-021",
+      "split": "test",
+      "condition": "texture",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-022",
+      "scene_id": "scene-022",
+      "trajectory_family": "scene-022",
+      "split": "test",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-023",
+      "scene_id": "scene-023",
+      "trajectory_family": "scene-023",
+      "split": "test",
+      "condition": "empty",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-024",
+      "scene_id": "scene-024",
+      "trajectory_family": "scene-024",
+      "split": "test",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-025",
+      "scene_id": "scene-025",
+      "trajectory_family": "scene-025",
+      "split": "test",
+      "condition": "small_fast",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-026",
+      "scene_id": "scene-026",
+      "trajectory_family": "scene-026",
+      "split": "test",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-027",
+      "scene_id": "scene-027",
+      "trajectory_family": "scene-027",
+      "split": "test",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-028",
+      "scene_id": "scene-028",
+      "trajectory_family": "scene-028",
+      "split": "test",
+      "condition": "small_fast",
+      "source": "geometry"
+    },
+    {
+      "path": "scene-029",
+      "scene_id": "scene-029",
+      "trajectory_family": "scene-029",
+      "split": "test",
+      "condition": "exit",
+      "source": "sar"
+    }
+  ]
+}

@@ -1,0 +1,978 @@
+{
+  "profile": "small_shadow",
+  "seed": 88731,
+  "entries": [
+    {
+      "scene_id": "small-train-00",
+      "scene_family": "small-train-00",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-00",
+      "source": "sar",
+      "sha256": "44d08a310f6522b5a15aaedd3b053bfbadc67e339db11f68e5fed9fdd1d992f3"
+    },
+    {
+      "scene_id": "small-train-01",
+      "scene_family": "small-train-01",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-01",
+      "source": "sar",
+      "sha256": "f411feb5a9a54c34877007b20c49227272957ad173be1a28ab199e1edbe7f415"
+    },
+    {
+      "scene_id": "small-train-02",
+      "scene_family": "small-train-02",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-02",
+      "source": "sar",
+      "sha256": "68d4c5631c12a3339f1723acd9386644930c81608e01e2481cd8e4aeabc7ad0c"
+    },
+    {
+      "scene_id": "small-train-03",
+      "scene_family": "small-train-03",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-03",
+      "source": "sar",
+      "sha256": "797e5f1255fec891d9321f310d1f3d29b8ee8436828a442989c11fa363c9815a"
+    },
+    {
+      "scene_id": "small-train-04",
+      "scene_family": "small-train-04",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-04",
+      "source": "sar",
+      "sha256": "44a205897bffbba76d3614bd979785b56b04d6a536fcd0a3e709a9456b0fcddd"
+    },
+    {
+      "scene_id": "small-train-05",
+      "scene_family": "small-train-05",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-05",
+      "source": "sar",
+      "sha256": "548f51de66967a52b81901aac8a82573ce02f898ea7d68994852515e6d104c57"
+    },
+    {
+      "scene_id": "small-train-06",
+      "scene_family": "small-train-06",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-06",
+      "source": "sar",
+      "sha256": "39e367550c3bb0b5f4dd81465866b2f8d17ad7808a342428f212ed602cd6bd82"
+    },
+    {
+      "scene_id": "small-train-07",
+      "scene_family": "small-train-07",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-07",
+      "source": "sar",
+      "sha256": "479be2ae7ffc0c04019105143492c36f70691c864f7cac7e82336972a08382d1"
+    },
+    {
+      "scene_id": "small-train-08",
+      "scene_family": "small-train-08",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-08",
+      "source": "sar",
+      "sha256": "329078c0713e74cf2e3224b04d43887cd252dcdd06bcb2827069874b9127f816"
+    },
+    {
+      "scene_id": "small-train-09",
+      "scene_family": "small-train-09",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-09",
+      "source": "sar",
+      "sha256": "1e5a4ac2880afd0a647d096638d60e3c22a4c0ccbbf3fdabb06fc8147627d4d0"
+    },
+    {
+      "scene_id": "small-train-10",
+      "scene_family": "small-train-10",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-10",
+      "source": "sar",
+      "sha256": "4107a30594e5d2de67f4d5ffa956d9fbd2397626b2a77baa5d1f9a978ea8619d"
+    },
+    {
+      "scene_id": "small-train-11",
+      "scene_family": "small-train-11",
+      "condition": "normal",
+      "split": "train",
+      "path": "small-train-11",
+      "source": "sar",
+      "sha256": "06ffca3e61252eb4924547bb5607eb9cb01ca20e981deeff9d8fef0a3bc0721c"
+    },
+    {
+      "scene_id": "small-train-12",
+      "scene_family": "small-train-12",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-12",
+      "source": "sar",
+      "sha256": "ada204f7e3ab887f5346080ac55635bb2f81e77f54b496a8324520c0757666e6"
+    },
+    {
+      "scene_id": "small-train-13",
+      "scene_family": "small-train-13",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-13",
+      "source": "sar",
+      "sha256": "95e7a528d0cd849dcb003167d598e27e79794247a2f7a21eb43ff2d4e52757e8"
+    },
+    {
+      "scene_id": "small-train-14",
+      "scene_family": "small-train-14",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-14",
+      "source": "sar",
+      "sha256": "5fbfe12ad96cbf68005b547f3ec602afc9b639bfd163347d62c53f154fbd8468"
+    },
+    {
+      "scene_id": "small-train-15",
+      "scene_family": "small-train-15",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-15",
+      "source": "sar",
+      "sha256": "e78afef4797fdf3c4d10617540704d55c7100532faf2c06edd827bd8744ccfdb"
+    },
+    {
+      "scene_id": "small-train-16",
+      "scene_family": "small-train-16",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-16",
+      "source": "sar",
+      "sha256": "ad03758378c5eda33ea88d84752d4d25a90383fd3844a484efab3bf97c8d46cb"
+    },
+    {
+      "scene_id": "small-train-17",
+      "scene_family": "small-train-17",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-17",
+      "source": "sar",
+      "sha256": "a7de7c897b332a421fe0528633ec354366dc5eb687e78a5137c5087f1ab9ce1c"
+    },
+    {
+      "scene_id": "small-train-18",
+      "scene_family": "small-train-18",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-18",
+      "source": "sar",
+      "sha256": "abf3d9846aec480676c5c8fb75d28bd4f5d8acb99d1c8e9cdc9bf33cc40127d3"
+    },
+    {
+      "scene_id": "small-train-19",
+      "scene_family": "small-train-19",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-19",
+      "source": "sar",
+      "sha256": "28a69b099cd8498e5c3287a242990d3d42bc0e1ba55fb8f4d4d948c708f879ef"
+    },
+    {
+      "scene_id": "small-train-20",
+      "scene_family": "small-train-20",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-20",
+      "source": "sar",
+      "sha256": "2e8c9f4b54d02789cccbcf841ee0bb943b741125abc10e06293724f7fe2a07ca"
+    },
+    {
+      "scene_id": "small-train-21",
+      "scene_family": "small-train-21",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-21",
+      "source": "sar",
+      "sha256": "f78b85163930abccf4900912e59a80d048460fa2fd0a9bed9ec18ac0ea40857a"
+    },
+    {
+      "scene_id": "small-train-22",
+      "scene_family": "small-train-22",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-22",
+      "source": "sar",
+      "sha256": "92171fcbd81a123537fd506f784871e68e230e1828b6eedc9bb3a48c07e95f62"
+    },
+    {
+      "scene_id": "small-train-23",
+      "scene_family": "small-train-23",
+      "condition": "small",
+      "split": "train",
+      "path": "small-train-23",
+      "source": "sar",
+      "sha256": "c74fd632e3a54bc7ff1775b18ff8261faca53ef46ded3cb2467aa6035d9a2f38"
+    },
+    {
+      "scene_id": "small-train-24",
+      "scene_family": "small-train-24",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-24",
+      "source": "sar",
+      "sha256": "8b4cad15c89681ac9b920a9aad0f04d3e03b7eab70f005f4750178c78bec4289"
+    },
+    {
+      "scene_id": "small-train-25",
+      "scene_family": "small-train-25",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-25",
+      "source": "sar",
+      "sha256": "d7f2ba69beb9a0cb8873e38862e31a97efc03e413999547f9fb89503d7fd997e"
+    },
+    {
+      "scene_id": "small-train-26",
+      "scene_family": "small-train-26",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-26",
+      "source": "sar",
+      "sha256": "35d3b36adf4cc5cc72c77c97db8f7e8f446978c50170385bbb613a2893f97a9c"
+    },
+    {
+      "scene_id": "small-train-27",
+      "scene_family": "small-train-27",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-27",
+      "source": "sar",
+      "sha256": "028a5bc17eddaf88dc4065236108854c6c8100486379cc60eb5d5538e1727c40"
+    },
+    {
+      "scene_id": "small-train-28",
+      "scene_family": "small-train-28",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-28",
+      "source": "sar",
+      "sha256": "5899a054a3f079f49a8fdfb1f522bf15bfe6682e77891653d48457e9289c2c20"
+    },
+    {
+      "scene_id": "small-train-29",
+      "scene_family": "small-train-29",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-29",
+      "source": "sar",
+      "sha256": "fee81a48a345a76305a2b558df419026d20a48a72d4f7dcf90a1bdabac2539b1"
+    },
+    {
+      "scene_id": "small-train-30",
+      "scene_family": "small-train-30",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-30",
+      "source": "sar",
+      "sha256": "af6af2488f8f292fef5abaf64113a66e1c0ae5c99580de7d3ae8a5a50a6ff8dc"
+    },
+    {
+      "scene_id": "small-train-31",
+      "scene_family": "small-train-31",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-31",
+      "source": "sar",
+      "sha256": "151b33097bed5d26cc9200155dbefde6518bc9e448701a14d717df60c0e79d58"
+    },
+    {
+      "scene_id": "small-train-32",
+      "scene_family": "small-train-32",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-32",
+      "source": "sar",
+      "sha256": "eb3e17f3f191854edd20f95ac3cede369f72ac55ad39bda87aef55c9b6d91a48"
+    },
+    {
+      "scene_id": "small-train-33",
+      "scene_family": "small-train-33",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-33",
+      "source": "sar",
+      "sha256": "e6ebbf3276aa35cf1112693d65e287dc48312656673f1604d08cc761f41dc8c6"
+    },
+    {
+      "scene_id": "small-train-34",
+      "scene_family": "small-train-34",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-34",
+      "source": "sar",
+      "sha256": "2890f3e11c143ec9c2fc6ba6bc8bbfe6368dc5c5a30f96774e24952c443cf650"
+    },
+    {
+      "scene_id": "small-train-35",
+      "scene_family": "small-train-35",
+      "condition": "small_slow_dark",
+      "split": "train",
+      "path": "small-train-35",
+      "source": "sar",
+      "sha256": "2141554b4362631698ddfb6101cfe6610c74c87cbe2f326907ae9079eb2f2ab9"
+    },
+    {
+      "scene_id": "small-train-36",
+      "scene_family": "small-train-36",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-36",
+      "source": "sar",
+      "sha256": "8663a04acfd012acaec8863fced6aa26a580ddd8b3c4c638df8fc65f112bee96"
+    },
+    {
+      "scene_id": "small-train-37",
+      "scene_family": "small-train-37",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-37",
+      "source": "sar",
+      "sha256": "7e3cfc3e6aad80851b82d48bff6c3364a4ed316aa3d0ee9f4f7055cd1f7b8fa0"
+    },
+    {
+      "scene_id": "small-train-38",
+      "scene_family": "small-train-38",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-38",
+      "source": "sar",
+      "sha256": "2919813ab4bbb6c08c8aab613fcde6423118b215dc0dbfb9d68acbce2defdc62"
+    },
+    {
+      "scene_id": "small-train-39",
+      "scene_family": "small-train-39",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-39",
+      "source": "sar",
+      "sha256": "3e3c06e16f859fe063fc195bd3850e05aa3abb3d17a4df206218269aded273aa"
+    },
+    {
+      "scene_id": "small-train-40",
+      "scene_family": "small-train-40",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-40",
+      "source": "sar",
+      "sha256": "0cf9745aaf3946e379ecbc5fd49622a2dda8cfe0f796d3595a30c9105d4e4fa4"
+    },
+    {
+      "scene_id": "small-train-41",
+      "scene_family": "small-train-41",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-41",
+      "source": "sar",
+      "sha256": "e4f757319046f2036050b42328e539535a1937a1f43b679a56d115a508b93260"
+    },
+    {
+      "scene_id": "small-train-42",
+      "scene_family": "small-train-42",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-42",
+      "source": "sar",
+      "sha256": "5d958777e712b68a4d8bcb3bbf8b4c64e2205e34265cb3d320ac75c674db12f2"
+    },
+    {
+      "scene_id": "small-train-43",
+      "scene_family": "small-train-43",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-43",
+      "source": "sar",
+      "sha256": "5445b99708ab1c70cf9ce34c3727848673b4b8d290877bb3ba106523d3658703"
+    },
+    {
+      "scene_id": "small-train-44",
+      "scene_family": "small-train-44",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-44",
+      "source": "sar",
+      "sha256": "c397eb5a348ecdecf2b243a3c37029d8656158308a91e8a0915d9e151f53b438"
+    },
+    {
+      "scene_id": "small-train-45",
+      "scene_family": "small-train-45",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-45",
+      "source": "sar",
+      "sha256": "2030026e07954be9d96a708d0416e4dff9556d5412e4e5280097f51a7575054a"
+    },
+    {
+      "scene_id": "small-train-46",
+      "scene_family": "small-train-46",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-46",
+      "source": "sar",
+      "sha256": "bd2e73ca6aceb203fadf4b64a2cc7ccb31e9cf13e03fef93a9aaebb8f80fcdc6"
+    },
+    {
+      "scene_id": "small-train-47",
+      "scene_family": "small-train-47",
+      "condition": "empty",
+      "split": "train",
+      "path": "small-train-47",
+      "source": "sar",
+      "sha256": "6c6293607e72132ce7796474f912fcddf6fb562bd5d447935f9f4c107e891c2f"
+    },
+    {
+      "scene_id": "small-validation-00",
+      "scene_family": "small-validation-00",
+      "condition": "normal",
+      "split": "validation",
+      "path": "small-validation-00",
+      "source": "sar",
+      "sha256": "f97f70b1294a2ece2e5d463aec3c4ebb3f03c5878913802b8dcd82bacc1cc409"
+    },
+    {
+      "scene_id": "small-validation-01",
+      "scene_family": "small-validation-01",
+      "condition": "normal",
+      "split": "validation",
+      "path": "small-validation-01",
+      "source": "sar",
+      "sha256": "a4c5c45cc5dc646c4a0430988321f67c821ad07180ebfa8bc3864cffe38872f5"
+    },
+    {
+      "scene_id": "small-validation-02",
+      "scene_family": "small-validation-02",
+      "condition": "normal",
+      "split": "validation",
+      "path": "small-validation-02",
+      "source": "sar",
+      "sha256": "2570fb5d2d08d7c86982fa6e4ebcd36feb8d2ad93dfaa274adaba0fdf1699469"
+    },
+    {
+      "scene_id": "small-validation-03",
+      "scene_family": "small-validation-03",
+      "condition": "normal",
+      "split": "validation",
+      "path": "small-validation-03",
+      "source": "sar",
+      "sha256": "b661777b447acc65c5c0a71a709c7e355a2d77ae4fd0b965d3cd8c4d1212e5b0"
+    },
+    {
+      "scene_id": "small-validation-04",
+      "scene_family": "small-validation-04",
+      "condition": "normal",
+      "split": "validation",
+      "path": "small-validation-04",
+      "source": "sar",
+      "sha256": "da26fbb1c4617cd728476a327eb736dbfa3cf5e39ab34400e970dfa17239f2fa"
+    },
+    {
+      "scene_id": "small-validation-05",
+      "scene_family": "small-validation-05",
+      "condition": "normal",
+      "split": "validation",
+      "path": "small-validation-05",
+      "source": "sar",
+      "sha256": "98ca732b75710b66c3a64033dee54cd3f7295bc733201eb9b1cb698adc895d61"
+    },
+    {
+      "scene_id": "small-validation-06",
+      "scene_family": "small-validation-06",
+      "condition": "small",
+      "split": "validation",
+      "path": "small-validation-06",
+      "source": "sar",
+      "sha256": "97a9088f28e9db3b0f3bc941fbfcbb7f520ab08d4c9740840d3725d30359d9bf"
+    },
+    {
+      "scene_id": "small-validation-07",
+      "scene_family": "small-validation-07",
+      "condition": "small",
+      "split": "validation",
+      "path": "small-validation-07",
+      "source": "sar",
+      "sha256": "ac0fc52ed402ff6b92771aa986b11de3c10f6e396a42fd69c2679fc578db205c"
+    },
+    {
+      "scene_id": "small-validation-08",
+      "scene_family": "small-validation-08",
+      "condition": "small",
+      "split": "validation",
+      "path": "small-validation-08",
+      "source": "sar",
+      "sha256": "2511f8a288c220918b063ce568401e849c582c9fc4e44f95cd2ecfa505799366"
+    },
+    {
+      "scene_id": "small-validation-09",
+      "scene_family": "small-validation-09",
+      "condition": "small",
+      "split": "validation",
+      "path": "small-validation-09",
+      "source": "sar",
+      "sha256": "ad864508e93f1a608400c82892aaaff7738f1fc5599700e48cb1cc6f55ee7577"
+    },
+    {
+      "scene_id": "small-validation-10",
+      "scene_family": "small-validation-10",
+      "condition": "small",
+      "split": "validation",
+      "path": "small-validation-10",
+      "source": "sar",
+      "sha256": "e159c1114455826516156948c6e1eb73cedde599e67d9bef59dc989ce303f5fb"
+    },
+    {
+      "scene_id": "small-validation-11",
+      "scene_family": "small-validation-11",
+      "condition": "small",
+      "split": "validation",
+      "path": "small-validation-11",
+      "source": "sar",
+      "sha256": "dc8903d0142a67fb7b2c616ef42994e4b97932a876a9a29d06f618c4163e3779"
+    },
+    {
+      "scene_id": "small-validation-12",
+      "scene_family": "small-validation-12",
+      "condition": "small_slow_dark",
+      "split": "validation",
+      "path": "small-validation-12",
+      "source": "sar",
+      "sha256": "9be011a6aefbe953a26c9e6121a7ea325f9204f713784ac5568ec1fa4759cca8"
+    },
+    {
+      "scene_id": "small-validation-13",
+      "scene_family": "small-validation-13",
+      "condition": "small_slow_dark",
+      "split": "validation",
+      "path": "small-validation-13",
+      "source": "sar",
+      "sha256": "8780c2d6f15bec320092fd5aa6450c5760ddbbcdda8f3afeca1224279dedeb7e"
+    },
+    {
+      "scene_id": "small-validation-14",
+      "scene_family": "small-validation-14",
+      "condition": "small_slow_dark",
+      "split": "validation",
+      "path": "small-validation-14",
+      "source": "sar",
+      "sha256": "8331d1a819f1c315e3c66780af3e630500ec101ed36bf50df9f6c0a54af7e00a"
+    },
+    {
+      "scene_id": "small-validation-15",
+      "scene_family": "small-validation-15",
+      "condition": "small_slow_dark",
+      "split": "validation",
+      "path": "small-validation-15",
+      "source": "sar",
+      "sha256": "1be7d5226562879685c0e333207af3f202ce84c257d6188d9bd3c6457ab76836"
+    },
+    {
+      "scene_id": "small-validation-16",
+      "scene_family": "small-validation-16",
+      "condition": "small_slow_dark",
+      "split": "validation",
+      "path": "small-validation-16",
+      "source": "sar",
+      "sha256": "c40bf622cdd2c328b3fca003ad4bd89b1ab3503a498394acc278491baa70f1e5"
+    },
+    {
+      "scene_id": "small-validation-17",
+      "scene_family": "small-validation-17",
+      "condition": "small_slow_dark",
+      "split": "validation",
+      "path": "small-validation-17",
+      "source": "sar",
+      "sha256": "f84636d2a79429954a09496077275ce055aac0eb1ac648f72a86d87bf3a69d1a"
+    },
+    {
+      "scene_id": "small-validation-18",
+      "scene_family": "small-validation-18",
+      "condition": "empty",
+      "split": "validation",
+      "path": "small-validation-18",
+      "source": "sar",
+      "sha256": "befbac4bd423a96617273ec1cb88f3cb17e4da14ba8b10553ce21b63f750b00b"
+    },
+    {
+      "scene_id": "small-validation-19",
+      "scene_family": "small-validation-19",
+      "condition": "empty",
+      "split": "validation",
+      "path": "small-validation-19",
+      "source": "sar",
+      "sha256": "bb8aedc76139487bea122a7953e053105e87d2cd94759eb1962c5f440283d8f8"
+    },
+    {
+      "scene_id": "small-validation-20",
+      "scene_family": "small-validation-20",
+      "condition": "empty",
+      "split": "validation",
+      "path": "small-validation-20",
+      "source": "sar",
+      "sha256": "2e0826262b23bbb2c74a9d527acf4968d8c6e50da512fe0ca7ddeae439658faa"
+    },
+    {
+      "scene_id": "small-validation-21",
+      "scene_family": "small-validation-21",
+      "condition": "empty",
+      "split": "validation",
+      "path": "small-validation-21",
+      "source": "sar",
+      "sha256": "fdb7f733849452e961a11ab7bc178d1536bf731692dca6c8495cfc31b1963630"
+    },
+    {
+      "scene_id": "small-validation-22",
+      "scene_family": "small-validation-22",
+      "condition": "empty",
+      "split": "validation",
+      "path": "small-validation-22",
+      "source": "sar",
+      "sha256": "0c87140bcd756b419b552cacce91d825acf3f7fd20617b3edf17e42a98bb4950"
+    },
+    {
+      "scene_id": "small-validation-23",
+      "scene_family": "small-validation-23",
+      "condition": "empty",
+      "split": "validation",
+      "path": "small-validation-23",
+      "source": "sar",
+      "sha256": "78d6ec44e6882ddee0c2b473641827428b2a85a3c045a5f8eb64458373b2db63"
+    },
+    {
+      "scene_id": "small-test-00",
+      "scene_family": "small-test-00",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-00",
+      "source": "sar",
+      "sha256": "435703ea3af5bb3c7d6ebb386974777a199c9a8931fd6219fda1c349ad7bd16b"
+    },
+    {
+      "scene_id": "small-test-01",
+      "scene_family": "small-test-01",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-01",
+      "source": "sar",
+      "sha256": "1bcad7d127e5b9f941ab235cc3ae35b69547a49fdbb506b7e9822c2c4026edc7"
+    },
+    {
+      "scene_id": "small-test-02",
+      "scene_family": "small-test-02",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-02",
+      "source": "sar",
+      "sha256": "e92c667d7bceb481c45ef841dd5f6d14976fbfea8bad171dcb29df6cf31bc4bc"
+    },
+    {
+      "scene_id": "small-test-03",
+      "scene_family": "small-test-03",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-03",
+      "source": "sar",
+      "sha256": "8adc88af8f3d500033175d6b63d63770574604c0284adb12b1838d4e0eab9d3d"
+    },
+    {
+      "scene_id": "small-test-04",
+      "scene_family": "small-test-04",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-04",
+      "source": "sar",
+      "sha256": "fabcd80d09854ec6d3ae6eda53ae5b59fe699bcd6580c0aa8b9981c4b8522d1a"
+    },
+    {
+      "scene_id": "small-test-05",
+      "scene_family": "small-test-05",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-05",
+      "source": "sar",
+      "sha256": "d32ee7e53da31204abeaca2903042fc61f608ec73b619f389534e55826381f84"
+    },
+    {
+      "scene_id": "small-test-06",
+      "scene_family": "small-test-06",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-06",
+      "source": "sar",
+      "sha256": "86c32a95243926a89ec6b6ce97e6da48206f5c8b8c7175792ffbb8a2039268a7"
+    },
+    {
+      "scene_id": "small-test-07",
+      "scene_family": "small-test-07",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-07",
+      "source": "sar",
+      "sha256": "6597aabf92c6c15ccfc2b162c16e065b64df9623bf8bf5e6b478655cb40da1dc"
+    },
+    {
+      "scene_id": "small-test-08",
+      "scene_family": "small-test-08",
+      "condition": "normal",
+      "split": "test",
+      "path": "small-test-08",
+      "source": "sar",
+      "sha256": "e8b48ea0e6edfe02bcad6d864f8b5d6d104b89911c4a62ac116d0f6ef4bda145"
+    },
+    {
+      "scene_id": "small-test-09",
+      "scene_family": "small-test-09",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-09",
+      "source": "sar",
+      "sha256": "391d7aa3425ebb5e3a39018abcca662abe39efc6e962553fab2bdbbb32b13963"
+    },
+    {
+      "scene_id": "small-test-10",
+      "scene_family": "small-test-10",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-10",
+      "source": "sar",
+      "sha256": "1134597cb4dd9e21de9a156934bd4b13ddd5607fc314654c016575f2cedc0efa"
+    },
+    {
+      "scene_id": "small-test-11",
+      "scene_family": "small-test-11",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-11",
+      "source": "sar",
+      "sha256": "81807484225ce15dee19964927e3f66c0f77a6ac63be53ee4a8aa8046f032976"
+    },
+    {
+      "scene_id": "small-test-12",
+      "scene_family": "small-test-12",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-12",
+      "source": "sar",
+      "sha256": "6c10b7abce1baaa77f02699baded4ab2f0e94f94b666925651338ca30fac421d"
+    },
+    {
+      "scene_id": "small-test-13",
+      "scene_family": "small-test-13",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-13",
+      "source": "sar",
+      "sha256": "059c41bb43b7af7a5cfb9aa89ffa2285fbb5165cb72e77a1d69c22e9024b55a4"
+    },
+    {
+      "scene_id": "small-test-14",
+      "scene_family": "small-test-14",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-14",
+      "source": "sar",
+      "sha256": "3730eb5808b2c5a4a7f6c5d213bcb3ed45ff9d4ff66f3b524e850811eb91d78d"
+    },
+    {
+      "scene_id": "small-test-15",
+      "scene_family": "small-test-15",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-15",
+      "source": "sar",
+      "sha256": "9c1c3bb44ad267d6ffc09ec6b7aaecf9b55e30284eda3a00f8f777033343d446"
+    },
+    {
+      "scene_id": "small-test-16",
+      "scene_family": "small-test-16",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-16",
+      "source": "sar",
+      "sha256": "611d4c067d573a245097073862a2ab27c7622af55ae9de1fe92fe89aa2ee1dee"
+    },
+    {
+      "scene_id": "small-test-17",
+      "scene_family": "small-test-17",
+      "condition": "small",
+      "split": "test",
+      "path": "small-test-17",
+      "source": "sar",
+      "sha256": "aab9108316ff90e45019c5cd3a709062b648fde0cff676de48868adb12c270f7"
+    },
+    {
+      "scene_id": "small-test-18",
+      "scene_family": "small-test-18",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-18",
+      "source": "sar",
+      "sha256": "cb9c706389397e278ae87cd8c11b63cf561cf18994850c8c1ad598e54484baaf"
+    },
+    {
+      "scene_id": "small-test-19",
+      "scene_family": "small-test-19",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-19",
+      "source": "sar",
+      "sha256": "6c1bfbb84fa004a5e194d50d5b94e75421da4bf2b3966308c25fb91a0f958f31"
+    },
+    {
+      "scene_id": "small-test-20",
+      "scene_family": "small-test-20",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-20",
+      "source": "sar",
+      "sha256": "57585dfcf42957132cc874f8751b11879d1df11f647574c36bba0fb09be74600"
+    },
+    {
+      "scene_id": "small-test-21",
+      "scene_family": "small-test-21",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-21",
+      "source": "sar",
+      "sha256": "10552380b76f8672eda9b7ebe6f1174caf3f33e26ce2108d669c5f5b89c3cfba"
+    },
+    {
+      "scene_id": "small-test-22",
+      "scene_family": "small-test-22",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-22",
+      "source": "sar",
+      "sha256": "a0fde0a378c1994144cbe692dfca746726ddc0465432b0e5aa9b68617723937f"
+    },
+    {
+      "scene_id": "small-test-23",
+      "scene_family": "small-test-23",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-23",
+      "source": "sar",
+      "sha256": "cf71a93fb516ad0ad32bd4ea7e34bef0878311e11bf127ca89d84aceb191a449"
+    },
+    {
+      "scene_id": "small-test-24",
+      "scene_family": "small-test-24",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-24",
+      "source": "sar",
+      "sha256": "fcb6275d0a01b42284aed90f96db2ef34acac8e50e478e3dae11442a8f147ba0"
+    },
+    {
+      "scene_id": "small-test-25",
+      "scene_family": "small-test-25",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-25",
+      "source": "sar",
+      "sha256": "52738056d58f37cc4ddcd5a8e8575e0320c2ea0770b01b8e1ef4d77604be53d7"
+    },
+    {
+      "scene_id": "small-test-26",
+      "scene_family": "small-test-26",
+      "condition": "small_slow_dark",
+      "split": "test",
+      "path": "small-test-26",
+      "source": "sar",
+      "sha256": "c907274e1cc5981125e4187bc06436ec34fd1f76f3fb28bf43032a819b76de16"
+    },
+    {
+      "scene_id": "small-test-27",
+      "scene_family": "small-test-27",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-27",
+      "source": "sar",
+      "sha256": "80162bca8b8e8f0ade8a07ed264977d4bf52af4a15c3deed04785a6bdcbcc90a"
+    },
+    {
+      "scene_id": "small-test-28",
+      "scene_family": "small-test-28",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-28",
+      "source": "sar",
+      "sha256": "4def1b0de143524257651702e228ac879bfc9618c022703cdbf619bdf69a8351"
+    },
+    {
+      "scene_id": "small-test-29",
+      "scene_family": "small-test-29",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-29",
+      "source": "sar",
+      "sha256": "ae82e95d86ab0febb54bc483ca6109fc2ef1216d6e540fb91088a09b3a444c07"
+    },
+    {
+      "scene_id": "small-test-30",
+      "scene_family": "small-test-30",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-30",
+      "source": "sar",
+      "sha256": "b9afd00b566915acc70ebc54901ca5df9b5264091fa4c6d1c78cf323e68fe049"
+    },
+    {
+      "scene_id": "small-test-31",
+      "scene_family": "small-test-31",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-31",
+      "source": "sar",
+      "sha256": "12748b08e0f022b0f302c3fb750ce90db0c805a4321b5350ba0048b89bca5fb1"
+    },
+    {
+      "scene_id": "small-test-32",
+      "scene_family": "small-test-32",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-32",
+      "source": "sar",
+      "sha256": "1ca45c814ef096d08fa94c152b9bc06d599d3a38dcab7a255a39e48efc8c4221"
+    },
+    {
+      "scene_id": "small-test-33",
+      "scene_family": "small-test-33",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-33",
+      "source": "sar",
+      "sha256": "64a78d7617188a4286d34913df8787231887bde9f3473468ed0b68c629cee4ba"
+    },
+    {
+      "scene_id": "small-test-34",
+      "scene_family": "small-test-34",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-34",
+      "source": "sar",
+      "sha256": "685f30308ab2f22b50e81d24717451f4c375900eb31c961c9861a003903f667f"
+    },
+    {
+      "scene_id": "small-test-35",
+      "scene_family": "small-test-35",
+      "condition": "empty",
+      "split": "test",
+      "path": "small-test-35",
+      "source": "sar",
+      "sha256": "d0613c012e9698b3ad279da66bc0a01ffe34ff4cba9d3197211df117dd677d4b"
+    }
+  ]
+}

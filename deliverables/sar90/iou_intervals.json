@@ -1,0 +1,23 @@
+{
+  "unit": "test_sequence",
+  "replicates": 2000,
+  "seed": 73,
+  "reference": "causal_temporal",
+  "paired_iou_gain": {
+    "threshold": {
+      "valid_replicates": 2000,
+      "iou_gain_lower_95": 0.24091569822455808,
+      "iou_gain_upper_95": 0.3310945921824604
+    },
+    "difference": {
+      "valid_replicates": 2000,
+      "iou_gain_lower_95": 0.20664304781768095,
+      "iou_gain_upper_95": 0.25623918369895754
+    },
+    "single_frame": {
+      "valid_replicates": 2000,
+      "iou_gain_lower_95": 0.1444540147505775,
+      "iou_gain_upper_95": 0.24074416488037645
+    }
+  }
+}

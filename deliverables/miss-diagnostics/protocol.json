@@ -1,0 +1,68 @@
+{
+  "dataset_sha256": "77f760daebc3e92612d00bce96726121a063a25c7a9111ba8c49caf1d7963422",
+  "split": "validation",
+  "sequences": 24,
+  "match_iou": 0.5,
+  "methods": {
+    "unet": {
+      "weight_sha256": "0a836e14e1b8826407c4aa2ccf1d7dfc714bed24d89f65a484f92d818afe3eaa",
+      "config_sha256": "8e0b17fc8a7e24bb3e1f09c3cef59af838f3ae4820000be2cd2d4026396d941f",
+      "threshold": 0.3,
+      "min_area": 12,
+      "closing": true
+    },
+    "fpn": {
+      "weight_sha256": "c19cae4c0d2925735656d99789a4185e3a63bd9ec2c1afc07fac53a356fa7090",
+      "config_sha256": "4907bd4d68bbf4f13290771adb1bae27df8c7e84631fe7d7a1fdd7bde79a0082",
+      "threshold": 0.7,
+      "min_area": 8,
+      "closing": true
+    }
+  },
+  "probe_thresholds": [
+    0.005,
+    0.0095,
+    0.01,
+    0.0105,
+    0.0108,
+    0.011,
+    0.0112,
+    0.01135,
+    0.0115,
+    0.0117,
+    0.0119,
+    0.0121,
+    0.0123,
+    0.0125,
+    0.013,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.78,
+    0.83,
+    0.88,
+    0.93
+  ],
+  "totals": {
+    "unet": {
+      "matched": 280,
+      "false_positive": 45,
+      "missed": 80
+    },
+    "fpn": {
+      "matched": 258,
+      "false_positive": 59,
+      "missed": 102
+    }
+  }
+}

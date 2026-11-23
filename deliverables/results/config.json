@@ -1,0 +1,8 @@
+{
+  "epochs": 16,
+  "seed": 42,
+  "min_area": 4,
+  "gate_px": 12.0,
+  "max_gap": 2,
+  "match_iou": 0.3
+}

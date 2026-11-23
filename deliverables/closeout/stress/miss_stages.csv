@@ -1,0 +1,7 @@
+﻿condition,raw_segmentation,closing,area_filter
+reference,28,0,2
+slow,36,0,1
+small,137,0,12
+static_dark,28,0,2
+combined,123,0,29
+empty_static_dark,0,0,0

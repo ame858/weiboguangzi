@@ -1,0 +1,9 @@
+{
+  "method": "accumulation",
+  "threshold": 0.32,
+  "gate": 2,
+  "replace": false,
+  "minimum_displacement": 0.0,
+  "model_settings": "models/joint_mask.json",
+  "adopted": false
+}

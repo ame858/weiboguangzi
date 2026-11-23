@@ -1,0 +1,11 @@
+﻿method,band,frames,matched,missed,raw_segmentation,closing,area_filter,threshold_probe_matches,area_rule_impossible,false_alarms
+unet,1–11,20,0,20,20,0,0,2,2,4
+unet,12–23,67,27,40,40,0,0,13,0,19
+unet,24–47,201,181,20,20,0,0,13,0,16
+unet,48+,72,72,0,0,0,0,0,0,2
+unet,no_label,120,0,0,0,0,0,0,0,4
+fpn,1–11,20,1,19,18,0,1,6,1,3
+fpn,12–23,67,22,45,45,0,0,18,0,16
+fpn,24–47,201,164,37,37,0,0,29,0,31
+fpn,48+,72,71,1,1,0,0,1,0,3
+fpn,no_label,120,0,0,0,0,0,0,0,6

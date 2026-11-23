@@ -1,0 +1,138 @@
+{
+  "threshold": [
+    {
+      "threshold": 0.15,
+      "validation_iou": 0.04768409012670598
+    },
+    {
+      "threshold": 0.25,
+      "validation_iou": 0.07490503745251872
+    },
+    {
+      "threshold": 0.35,
+      "validation_iou": 0.1171282819840332
+    },
+    {
+      "threshold": 0.45,
+      "validation_iou": 0.18609284718071328
+    },
+    {
+      "threshold": 0.55,
+      "validation_iou": 0.24030164036383425
+    },
+    {
+      "threshold": 0.65,
+      "validation_iou": 0.2668654079717346
+    },
+    {
+      "threshold": 0.75,
+      "validation_iou": 0.25863570391872276
+    },
+    {
+      "threshold": 0.85,
+      "validation_iou": 0.03996524761077324
+    }
+  ],
+  "difference": [
+    {
+      "threshold": 0.15,
+      "validation_iou": 0.07964154991796037
+    },
+    {
+      "threshold": 0.25,
+      "validation_iou": 0.11463106335914046
+    },
+    {
+      "threshold": 0.35,
+      "validation_iou": 0.15496308950033555
+    },
+    {
+      "threshold": 0.45,
+      "validation_iou": 0.21152901895315723
+    },
+    {
+      "threshold": 0.55,
+      "validation_iou": 0.24184022381100403
+    },
+    {
+      "threshold": 0.65,
+      "validation_iou": 0.22669664758789862
+    },
+    {
+      "threshold": 0.75,
+      "validation_iou": 0.12845057880676758
+    },
+    {
+      "threshold": 0.85,
+      "validation_iou": 0.004056795131845842
+    }
+  ],
+  "single_frame": [
+    {
+      "threshold": 0.35,
+      "validation_iou": 0.20058110903181325
+    },
+    {
+      "threshold": 0.5,
+      "validation_iou": 0.2556390977443609
+    },
+    {
+      "threshold": 0.65,
+      "validation_iou": 0.31644251626898046
+    },
+    {
+      "threshold": 0.75,
+      "validation_iou": 0.35149638802889577
+    },
+    {
+      "threshold": 0.85,
+      "validation_iou": 0.375
+    },
+    {
+      "threshold": 0.9,
+      "validation_iou": 0.3746005279977769
+    },
+    {
+      "threshold": 0.95,
+      "validation_iou": 0.34230832375636183
+    },
+    {
+      "threshold": 0.98,
+      "validation_iou": 0.20110628210193598
+    }
+  ],
+  "causal_temporal": [
+    {
+      "threshold": 0.35,
+      "validation_iou": 0.19271467365858228
+    },
+    {
+      "threshold": 0.5,
+      "validation_iou": 0.24168664330936135
+    },
+    {
+      "threshold": 0.65,
+      "validation_iou": 0.3007033038927053
+    },
+    {
+      "threshold": 0.75,
+      "validation_iou": 0.3510090609555189
+    },
+    {
+      "threshold": 0.85,
+      "validation_iou": 0.41178923953844015
+    },
+    {
+      "threshold": 0.9,
+      "validation_iou": 0.4239075841285786
+    },
+    {
+      "threshold": 0.95,
+      "validation_iou": 0.3745085867990896
+    },
+    {
+      "threshold": 0.98,
+      "validation_iou": 0.2278000892458724
+    }
+  ]
+}

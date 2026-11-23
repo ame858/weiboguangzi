@@ -1,0 +1,582 @@
+{
+  "profile": "stress",
+  "seed": 73191,
+  "entries": [
+    {
+      "scene_id": "stress-00-reference",
+      "scene_family": "stress-00",
+      "condition": "reference",
+      "path": "stress-00-reference",
+      "source": "sar",
+      "sha256": "2505de5423ee72cb4e058ab835d74714a9bcd9fa22c8b98272acb36f3b8087c8"
+    },
+    {
+      "scene_id": "stress-00-slow",
+      "scene_family": "stress-00",
+      "condition": "slow",
+      "path": "stress-00-slow",
+      "source": "sar",
+      "sha256": "a05ed54f50cdac08b88026c3fb457111ede00c621406cadbffefbb70b3c83b30"
+    },
+    {
+      "scene_id": "stress-00-small",
+      "scene_family": "stress-00",
+      "condition": "small",
+      "path": "stress-00-small",
+      "source": "sar",
+      "sha256": "25975485b11ae1c6c41233bcfd585a557cc987f26bf4045e6a60bba2949979e6"
+    },
+    {
+      "scene_id": "stress-00-static_dark",
+      "scene_family": "stress-00",
+      "condition": "static_dark",
+      "path": "stress-00-static_dark",
+      "source": "sar",
+      "sha256": "d627e16d99f437a74f7aab96562bcd175307b86e9db236ba2558b033bbd7fa41"
+    },
+    {
+      "scene_id": "stress-00-combined",
+      "scene_family": "stress-00",
+      "condition": "combined",
+      "path": "stress-00-combined",
+      "source": "sar",
+      "sha256": "04270004805a95545275bdbba1b80d456b1e27743c6016b2a255fa357c3849fb"
+    },
+    {
+      "scene_id": "stress-01-reference",
+      "scene_family": "stress-01",
+      "condition": "reference",
+      "path": "stress-01-reference",
+      "source": "sar",
+      "sha256": "10b1549453d858c63aab9036d12d32ca056ea682fa9aba3c46d620c652b66b6d"
+    },
+    {
+      "scene_id": "stress-01-slow",
+      "scene_family": "stress-01",
+      "condition": "slow",
+      "path": "stress-01-slow",
+      "source": "sar",
+      "sha256": "e04424163e8f42a32b32a504c441fc6b85162c6752e219470d5165c0b15c6f1e"
+    },
+    {
+      "scene_id": "stress-01-small",
+      "scene_family": "stress-01",
+      "condition": "small",
+      "path": "stress-01-small",
+      "source": "sar",
+      "sha256": "e020d193c999e023e4d0a42b31d6b10c13d499e7820b407248ffca7b8f41d4f7"
+    },
+    {
+      "scene_id": "stress-01-static_dark",
+      "scene_family": "stress-01",
+      "condition": "static_dark",
+      "path": "stress-01-static_dark",
+      "source": "sar",
+      "sha256": "06ac99938f7f34c637ed6a2b02eb3e367bec2cfd00e0393abd037a0883fbf695"
+    },
+    {
+      "scene_id": "stress-01-combined",
+      "scene_family": "stress-01",
+      "condition": "combined",
+      "path": "stress-01-combined",
+      "source": "sar",
+      "sha256": "1d395fde6defbea8992068a387b3fccc828d4dbdc2ba9d523769b966f7f6f411"
+    },
+    {
+      "scene_id": "stress-02-reference",
+      "scene_family": "stress-02",
+      "condition": "reference",
+      "path": "stress-02-reference",
+      "source": "sar",
+      "sha256": "3cd44280baf966f4653a6e3a858c3400cf52945b5e7f59a019c71a76d7fa4a25"
+    },
+    {
+      "scene_id": "stress-02-slow",
+      "scene_family": "stress-02",
+      "condition": "slow",
+      "path": "stress-02-slow",
+      "source": "sar",
+      "sha256": "668aafe204ffcc5bc1b83d92cdfe2068df56643fc42d9a6bec6da83e39540e13"
+    },
+    {
+      "scene_id": "stress-02-small",
+      "scene_family": "stress-02",
+      "condition": "small",
+      "path": "stress-02-small",
+      "source": "sar",
+      "sha256": "230ffdc996593cbce1e98bafd919a578e32a2ea68266b414d07cc2cd007e3b6d"
+    },
+    {
+      "scene_id": "stress-02-static_dark",
+      "scene_family": "stress-02",
+      "condition": "static_dark",
+      "path": "stress-02-static_dark",
+      "source": "sar",
+      "sha256": "ecc4c56e68727c5c0809f860de2543ba0c5756fd5153f9f9a76e3604b69e8536"
+    },
+    {
+      "scene_id": "stress-02-combined",
+      "scene_family": "stress-02",
+      "condition": "combined",
+      "path": "stress-02-combined",
+      "source": "sar",
+      "sha256": "4d0666d861be35e73c801e6b1e6647b14f667d6c460e371654f042a188d62a9f"
+    },
+    {
+      "scene_id": "stress-03-reference",
+      "scene_family": "stress-03",
+      "condition": "reference",
+      "path": "stress-03-reference",
+      "source": "sar",
+      "sha256": "55feef7e8e848aad1269a49c88b0fdfe61730efed1b03b698bdc3b0814726c24"
+    },
+    {
+      "scene_id": "stress-03-slow",
+      "scene_family": "stress-03",
+      "condition": "slow",
+      "path": "stress-03-slow",
+      "source": "sar",
+      "sha256": "cb7b672ea5c410f090c8a65694d97d21a682ae6852d1034932b675a01d6e3105"
+    },
+    {
+      "scene_id": "stress-03-small",
+      "scene_family": "stress-03",
+      "condition": "small",
+      "path": "stress-03-small",
+      "source": "sar",
+      "sha256": "6711ca0a5af1beadb033ced19090fb8e44bbaf12fe74bf6826084fc61ebe2dee"
+    },
+    {
+      "scene_id": "stress-03-static_dark",
+      "scene_family": "stress-03",
+      "condition": "static_dark",
+      "path": "stress-03-static_dark",
+      "source": "sar",
+      "sha256": "a05ffc253d35e1484cc3053fb9bde25faae7d784ede9d4e421913b6123df8b15"
+    },
+    {
+      "scene_id": "stress-03-combined",
+      "scene_family": "stress-03",
+      "condition": "combined",
+      "path": "stress-03-combined",
+      "source": "sar",
+      "sha256": "9cd23ca918ee8d9970f40dc1acaad0bd503a2bb6d2c0969589c88603fd84fa13"
+    },
+    {
+      "scene_id": "stress-04-reference",
+      "scene_family": "stress-04",
+      "condition": "reference",
+      "path": "stress-04-reference",
+      "source": "sar",
+      "sha256": "6bdd221adf6764d422d26546d146e205df988f8b3f3ab230f8d358729160bc74"
+    },
+    {
+      "scene_id": "stress-04-slow",
+      "scene_family": "stress-04",
+      "condition": "slow",
+      "path": "stress-04-slow",
+      "source": "sar",
+      "sha256": "d6fe9b7d3a3a16f818d725709c725df7a1b440e76f4266537f1aae9e3745cc1e"
+    },
+    {
+      "scene_id": "stress-04-small",
+      "scene_family": "stress-04",
+      "condition": "small",
+      "path": "stress-04-small",
+      "source": "sar",
+      "sha256": "b443e4aa0bbcc5b2a71e140a809b87c1cf1f89b1e79710592bf64f69be7688d1"
+    },
+    {
+      "scene_id": "stress-04-static_dark",
+      "scene_family": "stress-04",
+      "condition": "static_dark",
+      "path": "stress-04-static_dark",
+      "source": "sar",
+      "sha256": "9cd9e8eed3c84bead6f602a7ddc37a3c402f380665a5d26dfa916b74fb4a5f2a"
+    },
+    {
+      "scene_id": "stress-04-combined",
+      "scene_family": "stress-04",
+      "condition": "combined",
+      "path": "stress-04-combined",
+      "source": "sar",
+      "sha256": "591d903dd1efe439678d95afebfc23ddbce81f572cd5c5c9cd727c626ada792c"
+    },
+    {
+      "scene_id": "stress-05-reference",
+      "scene_family": "stress-05",
+      "condition": "reference",
+      "path": "stress-05-reference",
+      "source": "sar",
+      "sha256": "600d4d25f606245772e506ea317a173f9dc84c404ed5d98478aff03e377fd659"
+    },
+    {
+      "scene_id": "stress-05-slow",
+      "scene_family": "stress-05",
+      "condition": "slow",
+      "path": "stress-05-slow",
+      "source": "sar",
+      "sha256": "31e119d1363fe96f033049b5bfd3557881acbd3ab70c3d7e600fa031c1598343"
+    },
+    {
+      "scene_id": "stress-05-small",
+      "scene_family": "stress-05",
+      "condition": "small",
+      "path": "stress-05-small",
+      "source": "sar",
+      "sha256": "1e895ed2df379fd479a84cf86fc591fb437c985272ccecf1243a7f3591e73d50"
+    },
+    {
+      "scene_id": "stress-05-static_dark",
+      "scene_family": "stress-05",
+      "condition": "static_dark",
+      "path": "stress-05-static_dark",
+      "source": "sar",
+      "sha256": "105a0c9cc81303f233e12feca549c40767b4e10a97569339aaa9be831f4191d0"
+    },
+    {
+      "scene_id": "stress-05-combined",
+      "scene_family": "stress-05",
+      "condition": "combined",
+      "path": "stress-05-combined",
+      "source": "sar",
+      "sha256": "133ee79294930d87d2f0fe995f90e2fa8cf9982777a12e533f9d6e837630c7b9"
+    },
+    {
+      "scene_id": "stress-06-reference",
+      "scene_family": "stress-06",
+      "condition": "reference",
+      "path": "stress-06-reference",
+      "source": "sar",
+      "sha256": "3304f0599412a54f8c4ae265e1a27f138d3c33567fd8daf6da9645e857a51e94"
+    },
+    {
+      "scene_id": "stress-06-slow",
+      "scene_family": "stress-06",
+      "condition": "slow",
+      "path": "stress-06-slow",
+      "source": "sar",
+      "sha256": "8bc0d74a586e6a3cd1e6cc4bdd6d6c8754b12e4ac98ecd5f0df0f98839caf60f"
+    },
+    {
+      "scene_id": "stress-06-small",
+      "scene_family": "stress-06",
+      "condition": "small",
+      "path": "stress-06-small",
+      "source": "sar",
+      "sha256": "6e6f06122337e5d966b885519190d4caba0941b720080d3294212ae56f68667a"
+    },
+    {
+      "scene_id": "stress-06-static_dark",
+      "scene_family": "stress-06",
+      "condition": "static_dark",
+      "path": "stress-06-static_dark",
+      "source": "sar",
+      "sha256": "80e74c9d9217a043afc34b9cb4f9338504f48bbdfee0de4aa32ba07595d0fe63"
+    },
+    {
+      "scene_id": "stress-06-combined",
+      "scene_family": "stress-06",
+      "condition": "combined",
+      "path": "stress-06-combined",
+      "source": "sar",
+      "sha256": "040d6382d8da5744b7cfd96cd1c5217ebb8bbf73f6c559036b54be66272c8a7f"
+    },
+    {
+      "scene_id": "stress-07-reference",
+      "scene_family": "stress-07",
+      "condition": "reference",
+      "path": "stress-07-reference",
+      "source": "sar",
+      "sha256": "37a496305297b7d96bf831bceeed98bd5642023fe7114c88e5d4a89da60fafe5"
+    },
+    {
+      "scene_id": "stress-07-slow",
+      "scene_family": "stress-07",
+      "condition": "slow",
+      "path": "stress-07-slow",
+      "source": "sar",
+      "sha256": "9adcb128637446a100226fe6d9cc26a1c317a3dca84548ea808bc8de0b469878"
+    },
+    {
+      "scene_id": "stress-07-small",
+      "scene_family": "stress-07",
+      "condition": "small",
+      "path": "stress-07-small",
+      "source": "sar",
+      "sha256": "da72a53f497e3243bc02b311af3f5f89e953c81b93212bbc4153358fa15ec8e1"
+    },
+    {
+      "scene_id": "stress-07-static_dark",
+      "scene_family": "stress-07",
+      "condition": "static_dark",
+      "path": "stress-07-static_dark",
+      "source": "sar",
+      "sha256": "e69c04527066d870050d2e915954b5af3764039c23ca71c03ed753e4fb12ed85"
+    },
+    {
+      "scene_id": "stress-07-combined",
+      "scene_family": "stress-07",
+      "condition": "combined",
+      "path": "stress-07-combined",
+      "source": "sar",
+      "sha256": "391cfc88dbd53b61cb7aca92da13478606c8e001367d979e5c47dd442a49e8f1"
+    },
+    {
+      "scene_id": "stress-08-reference",
+      "scene_family": "stress-08",
+      "condition": "reference",
+      "path": "stress-08-reference",
+      "source": "sar",
+      "sha256": "4c0c04782a94e82abda93805d1c6152613dd6a21e6a4c773a2b2e52556426364"
+    },
+    {
+      "scene_id": "stress-08-slow",
+      "scene_family": "stress-08",
+      "condition": "slow",
+      "path": "stress-08-slow",
+      "source": "sar",
+      "sha256": "c7af6d64bf57eeb67318b4e74b373180301b5763aee78170500884d37e0199d7"
+    },
+    {
+      "scene_id": "stress-08-small",
+      "scene_family": "stress-08",
+      "condition": "small",
+      "path": "stress-08-small",
+      "source": "sar",
+      "sha256": "426f1f9585637eaa7a9ba82034e5b5a3424c293eb06faa0a7b750ca18a7b99f5"
+    },
+    {
+      "scene_id": "stress-08-static_dark",
+      "scene_family": "stress-08",
+      "condition": "static_dark",
+      "path": "stress-08-static_dark",
+      "source": "sar",
+      "sha256": "9146ba9861f1fd3b03bcef9e780468a7bbb62025da2bf9e8b1dd357cef657c0d"
+    },
+    {
+      "scene_id": "stress-08-combined",
+      "scene_family": "stress-08",
+      "condition": "combined",
+      "path": "stress-08-combined",
+      "source": "sar",
+      "sha256": "06f6d64bc0d4d4b9eff7a46f9a15a3a92e1e032a6ee747d3d1900d7881a400d3"
+    },
+    {
+      "scene_id": "stress-09-reference",
+      "scene_family": "stress-09",
+      "condition": "reference",
+      "path": "stress-09-reference",
+      "source": "sar",
+      "sha256": "5d6eaa50a57000c0d1a5dd90b99ee94eb612d772765ce03ecc2b6ffe4a33234c"
+    },
+    {
+      "scene_id": "stress-09-slow",
+      "scene_family": "stress-09",
+      "condition": "slow",
+      "path": "stress-09-slow",
+      "source": "sar",
+      "sha256": "c361a600140aaccf81628026aee1f5f959d5127304dbb74be8f463c65ef52752"
+    },
+    {
+      "scene_id": "stress-09-small",
+      "scene_family": "stress-09",
+      "condition": "small",
+      "path": "stress-09-small",
+      "source": "sar",
+      "sha256": "cf8b12c6565bd8e2d78de0765b344a61b494822d8ffa35a3e098877969b2f614"
+    },
+    {
+      "scene_id": "stress-09-static_dark",
+      "scene_family": "stress-09",
+      "condition": "static_dark",
+      "path": "stress-09-static_dark",
+      "source": "sar",
+      "sha256": "cdac408d2a89ccc4ea09306c87bffc988713adc6b0bcc81b7c95db7b859aa620"
+    },
+    {
+      "scene_id": "stress-09-combined",
+      "scene_family": "stress-09",
+      "condition": "combined",
+      "path": "stress-09-combined",
+      "source": "sar",
+      "sha256": "be7366f86a13bfdff8a7cfbdbbd9dd9f77e37f2ec46e1208beb567c5aac610a5"
+    },
+    {
+      "scene_id": "stress-10-reference",
+      "scene_family": "stress-10",
+      "condition": "reference",
+      "path": "stress-10-reference",
+      "source": "sar",
+      "sha256": "aae38adc4d880f5e47ca62cc32305888b20cc6c7869d119dbc41d80e28c0dc50"
+    },
+    {
+      "scene_id": "stress-10-slow",
+      "scene_family": "stress-10",
+      "condition": "slow",
+      "path": "stress-10-slow",
+      "source": "sar",
+      "sha256": "6425f8fb366f98544e9f24970e2f824de11089904120f2e4d41cc19f3601de23"
+    },
+    {
+      "scene_id": "stress-10-small",
+      "scene_family": "stress-10",
+      "condition": "small",
+      "path": "stress-10-small",
+      "source": "sar",
+      "sha256": "71c71e0f7db585b40b65de90a9d159a6e23eb9b1b9c8270ff782e69cc6c5d2a9"
+    },
+    {
+      "scene_id": "stress-10-static_dark",
+      "scene_family": "stress-10",
+      "condition": "static_dark",
+      "path": "stress-10-static_dark",
+      "source": "sar",
+      "sha256": "0c8b165d085e9a6e7c0183d1a4338ffbd3d010ab23c04442796eeb33edca7d27"
+    },
+    {
+      "scene_id": "stress-10-combined",
+      "scene_family": "stress-10",
+      "condition": "combined",
+      "path": "stress-10-combined",
+      "source": "sar",
+      "sha256": "59c75847ce2bd8683b6d03676cf3633b42a8aa37bd7b0f23c849c1977dbbf457"
+    },
+    {
+      "scene_id": "stress-11-reference",
+      "scene_family": "stress-11",
+      "condition": "reference",
+      "path": "stress-11-reference",
+      "source": "sar",
+      "sha256": "fbaa063689b169de8e85dda60bd9f4a17284145046782b2d2d56e66bce804ad1"
+    },
+    {
+      "scene_id": "stress-11-slow",
+      "scene_family": "stress-11",
+      "condition": "slow",
+      "path": "stress-11-slow",
+      "source": "sar",
+      "sha256": "8111fd190ebb18ccbeb5c8d31cfb96566039d4e1d4907c50d630132f201d246b"
+    },
+    {
+      "scene_id": "stress-11-small",
+      "scene_family": "stress-11",
+      "condition": "small",
+      "path": "stress-11-small",
+      "source": "sar",
+      "sha256": "62d68971120c7a040f6315165b687bfeba05dfd550fa6c86ec5a8837d4b3b016"
+    },
+    {
+      "scene_id": "stress-11-static_dark",
+      "scene_family": "stress-11",
+      "condition": "static_dark",
+      "path": "stress-11-static_dark",
+      "source": "sar",
+      "sha256": "630405788287150834dc29bb18082ae2cbb865ff5ad8b0fd4f3f145a150212ea"
+    },
+    {
+      "scene_id": "stress-11-combined",
+      "scene_family": "stress-11",
+      "condition": "combined",
+      "path": "stress-11-combined",
+      "source": "sar",
+      "sha256": "2754a0163e24556b9c986012f9239dea36300fe5f8fa0a6cf304b957bb82b20a"
+    },
+    {
+      "scene_id": "stress-12-empty_static_dark",
+      "scene_family": "stress-12",
+      "condition": "empty_static_dark",
+      "path": "stress-12-empty_static_dark",
+      "source": "sar",
+      "sha256": "240e9aa211bb158a0046d4ed80e00c4236503e3cf51b042768838b4173bdf1e3"
+    },
+    {
+      "scene_id": "stress-13-empty_static_dark",
+      "scene_family": "stress-13",
+      "condition": "empty_static_dark",
+      "path": "stress-13-empty_static_dark",
+      "source": "sar",
+      "sha256": "9fcaa37338e8559737d9d3f09030c823d97babf357d610463c239ad459db5f8b"
+    },
+    {
+      "scene_id": "stress-14-empty_static_dark",
+      "scene_family": "stress-14",
+      "condition": "empty_static_dark",
+      "path": "stress-14-empty_static_dark",
+      "source": "sar",
+      "sha256": "c6e3836569f8d371a4a11480733fa8c23203714f06c137613f457b1d8e2c5563"
+    },
+    {
+      "scene_id": "stress-15-empty_static_dark",
+      "scene_family": "stress-15",
+      "condition": "empty_static_dark",
+      "path": "stress-15-empty_static_dark",
+      "source": "sar",
+      "sha256": "d25c5acffd730c4aa316e9a7e891bec113af80e016773b9102dd0115099970ca"
+    },
+    {
+      "scene_id": "stress-16-empty_static_dark",
+      "scene_family": "stress-16",
+      "condition": "empty_static_dark",
+      "path": "stress-16-empty_static_dark",
+      "source": "sar",
+      "sha256": "7f9afe5b5874f24f13f3c1cabf341166735a4fffcd2eed7caf44e9b199ef8343"
+    },
+    {
+      "scene_id": "stress-17-empty_static_dark",
+      "scene_family": "stress-17",
+      "condition": "empty_static_dark",
+      "path": "stress-17-empty_static_dark",
+      "source": "sar",
+      "sha256": "60016a3a154678da3d245bcfba2cb8c0cb5bc2d9b94f8f7784e816b0929af0ff"
+    },
+    {
+      "scene_id": "stress-18-empty_static_dark",
+      "scene_family": "stress-18",
+      "condition": "empty_static_dark",
+      "path": "stress-18-empty_static_dark",
+      "source": "sar",
+      "sha256": "8620af202e155283fbdade9e39c1438847c05a131beb9be4d142a642947d8a1b"
+    },
+    {
+      "scene_id": "stress-19-empty_static_dark",
+      "scene_family": "stress-19",
+      "condition": "empty_static_dark",
+      "path": "stress-19-empty_static_dark",
+      "source": "sar",
+      "sha256": "b4e9046a06d46858a80b387551ef43859ac7b23002093a949d9b805524879c18"
+    },
+    {
+      "scene_id": "stress-20-empty_static_dark",
+      "scene_family": "stress-20",
+      "condition": "empty_static_dark",
+      "path": "stress-20-empty_static_dark",
+      "source": "sar",
+      "sha256": "9845c8604655824b98d4556ec425f8adb56874ac3fcbe76dce13bdc29d1faab2"
+    },
+    {
+      "scene_id": "stress-21-empty_static_dark",
+      "scene_family": "stress-21",
+      "condition": "empty_static_dark",
+      "path": "stress-21-empty_static_dark",
+      "source": "sar",
+      "sha256": "dd17212f927cc4dcd353107d317698849fd1c2adf66b2a33f294f148d7b2229b"
+    },
+    {
+      "scene_id": "stress-22-empty_static_dark",
+      "scene_family": "stress-22",
+      "condition": "empty_static_dark",
+      "path": "stress-22-empty_static_dark",
+      "source": "sar",
+      "sha256": "84de54b2c787a5936d4e6e8c2b59b9ebdb109252d6923026084bf1826ba23887"
+    },
+    {
+      "scene_id": "stress-23-empty_static_dark",
+      "scene_family": "stress-23",
+      "condition": "empty_static_dark",
+      "path": "stress-23-empty_static_dark",
+      "source": "sar",
+      "sha256": "f4898ca4de73673dcb49e04f1411da29e714f53ac7dd57022185e418fa88b4fa"
+    }
+  ]
+}

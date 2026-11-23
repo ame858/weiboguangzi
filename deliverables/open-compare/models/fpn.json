@@ -1,0 +1,66 @@
+{
+  "format_version": 1,
+  "architecture": "smp.FPN/resnet18/depth3",
+  "input_scale": 1,
+  "temporal": true,
+  "noise_augmentation": false,
+  "mean": [
+    0.7577283382415771,
+    0.0015366922598332167
+  ],
+  "std": [
+    0.450236439704895,
+    0.4245865046977997
+  ],
+  "best_epoch": 8,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.4051413416862488,
+      "validation_loss": 0.9855313658714294
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.910844490925471,
+      "validation_loss": 0.7674699445565542
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.6742848853270212,
+      "validation_loss": 0.6106772661209107
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.4520977755387624,
+      "validation_loss": 0.5249678601821264
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.37167806426684064,
+      "validation_loss": 0.48853937685489657
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.33273527572552364,
+      "validation_loss": 0.4794368157784144
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.3053200011452039,
+      "validation_loss": 0.47380178173383075
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.2950188845396042,
+      "validation_loss": 0.46790904899438224
+    }
+  ],
+  "trainable_parameters": 798561,
+  "checkpoint": "fpn.pt",
+  "weight_sha256": "c19cae4c0d2925735656d99789a4185e3a63bd9ec2c1afc07fac53a356fa7090",
+  "registered": true,
+  "initialization": "random",
+  "threshold": 0.7,
+  "min_area": 8,
+  "closing": true
+}

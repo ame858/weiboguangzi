@@ -1,0 +1,66 @@
+{
+  "format_version": 1,
+  "architecture": "torchvision.LRASPP/MobileNetV3",
+  "input_scale": 1,
+  "temporal": true,
+  "noise_augmentation": false,
+  "mean": [
+    0.7577283382415771,
+    0.0015366922598332167
+  ],
+  "std": [
+    0.450236439704895,
+    0.4245865046977997
+  ],
+  "best_epoch": 5,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.256082797050476,
+      "validation_loss": 1.3931588013966878
+    },
+    {
+      "epoch": 2,
+      "train_loss": 1.0537307421366373,
+      "validation_loss": 1.2450493574142456
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.992434189716975,
+      "validation_loss": 1.1408819913864137
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.9085626900196075,
+      "validation_loss": 1.083341399828593
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.8001630564530691,
+      "validation_loss": 1.0747857570648194
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.718408852815628,
+      "validation_loss": 1.0862554868062337
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.6587351044019063,
+      "validation_loss": 1.0937899986902873
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.6225489874680837,
+      "validation_loss": 1.1046497821807861
+    }
+  ],
+  "trainable_parameters": 3217994,
+  "checkpoint": "lraspp.pt",
+  "weight_sha256": "848bd3216b9424f77db747138b9437612c4ae6b96106bde33db937ec79dac466",
+  "registered": true,
+  "initialization": "random",
+  "threshold": 0.0115,
+  "min_area": 24,
+  "closing": true
+}

@@ -1,0 +1,16 @@
+{
+  "scene_id": "stress-01-small",
+  "condition": "small",
+  "frame": 4,
+  "missed": true,
+  "false_alarms": 0,
+  "miss_stage": "area_filter",
+  "raw_components": 1,
+  "closed_components": 1,
+  "raw_best_iou": 0.5555555555555556,
+  "closed_best_iou": 0.5555555555555556,
+  "iou": 0.0,
+  "best_component_iou": 0.0,
+  "predicted_components": 0,
+  "target_visible": true
+}

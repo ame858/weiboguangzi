@@ -1,0 +1,21 @@
+{
+  "range_peak_error_bins": 0.4407583482342332,
+  "range_peak_error_m": 0.05505667858381697,
+  "expected_echo_delay_s": 3.369348246051761e-07,
+  "delay_error_s": 3.6729862352852767e-10,
+  "point_error_px": 0.0,
+  "point_expected_yx": [
+    34,
+    45
+  ],
+  "point_peak_yx": [
+    34,
+    45
+  ],
+  "range_mainlobe_half_power_width_m": 0.19986163866666667,
+  "half_bandwidth_mainlobe_m": 0.39972327733333335,
+  "half_bandwidth_width_ratio": 2.0,
+  "range_peak_within_bin": true,
+  "point_peak_within_pixel": true,
+  "width_scales_with_bandwidth": true
+}

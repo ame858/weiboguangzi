@@ -1,0 +1,65 @@
+{
+  "format_version": 1,
+  "architecture": "smp.Unet/resnet18/depth3",
+  "input_scale": 1,
+  "history_frames": 0,
+  "local_contrast": true,
+  "center_head": true,
+  "small_area_reference": null,
+  "temporal": true,
+  "noise_augmentation": false,
+  "mean": [
+    0.6943426728248596,
+    0.0007843017810955644,
+    -1.9460155709083438e-11,
+    6.071483593661497e-11
+  ],
+  "std": [
+    0.3549228310585022,
+    0.3007766902446747,
+    0.1916843056678772,
+    0.13786649703979492
+  ],
+  "best_epoch": 3,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 3.939487584431966,
+      "validation_loss": 2.2757197697957356
+    },
+    {
+      "epoch": 2,
+      "train_loss": 1.699014627933502,
+      "validation_loss": 1.7438664436340332
+    },
+    {
+      "epoch": 3,
+      "train_loss": 1.16442498366038,
+      "validation_loss": 1.5454975207646688
+    },
+    {
+      "epoch": 4,
+      "train_loss": 1.031074865659078,
+      "validation_loss": 1.5486621419588724
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.961961571375529,
+      "validation_loss": 1.6449553489685058
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.9055258691310882,
+      "validation_loss": 1.7768304228782654
+    }
+  ],
+  "trainable_parameters": 824142,
+  "checkpoint": "center_box.pt",
+  "weight_sha256": "8f26cea8832696a40758ba678994162a254b8d80749ec4c2c25ea3e9742b98d1",
+  "registered": true,
+  "parent_weight_sha256": "0a836e14e1b8826407c4aa2ccf1d7dfc714bed24d89f65a484f92d818afe3eaa",
+  "threshold": 0.55,
+  "min_area": 1,
+  "closing": false,
+  "detection_mode": "center_box"
+}

@@ -1,0 +1,11 @@
+{
+  "scene": "geometry",
+  "carrier_hz": 35000000000,
+  "bandwidth_hz": 600000000,
+  "pixel_size_m": 0.25,
+  "pulses_per_frame": 41,
+  "pulse_interval_s": 0.005,
+  "frames": 24,
+  "frame_interval_s": 0.2,
+  "seed": 42
+}

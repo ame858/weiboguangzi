@@ -1,0 +1,105 @@
+{
+  "format_version": 1,
+  "architecture": "smp.Unet/resnet18/depth3",
+  "temporal": true,
+  "noise_augmentation": true,
+  "mean": [
+    0.6943426728248596,
+    0.0007843017810955644
+  ],
+  "std": [
+    0.3549228310585022,
+    0.3007766902446747
+  ],
+  "best_epoch": 16,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.149919162856208,
+      "validation_loss": 0.8788874785105387
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.593174116479026,
+      "validation_loss": 0.4130687673886617
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.23316991958353256,
+      "validation_loss": 0.19752309521039327
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.15254675961203046,
+      "validation_loss": 0.17322942117849985
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.1266663208603859,
+      "validation_loss": 0.14075560122728348
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.10938170866833793,
+      "validation_loss": 0.12291297391057014
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.09890880568159952,
+      "validation_loss": 0.11820794170101484
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.08927489585346646,
+      "validation_loss": 0.1241223951180776
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.08489376687341266,
+      "validation_loss": 0.11268398811419805
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.07832551532321506,
+      "validation_loss": 0.12140873869260152
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.07582528914014498,
+      "validation_loss": 0.11319536939263344
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.07190863680508401,
+      "validation_loss": 0.10728461146354676
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.06917588586608568,
+      "validation_loss": 0.10922524780035019
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.06598215740587976,
+      "validation_loss": 0.10621068229277929
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.0644239033261935,
+      "validation_loss": 0.10671845773855845
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.06232088853915532,
+      "validation_loss": 0.10312928706407547
+    }
+  ],
+  "trainable_parameters": 817325,
+  "threshold": 0.83,
+  "min_area": 24,
+  "closing": true,
+  "seed": 20261119,
+  "registered": true,
+  "weight_sha256": "ef443977c8022475e548d4f346545679624d2a39dc5286a4cfdfe45662e0bcbe",
+  "checkpoint": "unet_temporal_noise.pt"
+}

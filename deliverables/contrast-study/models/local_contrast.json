@@ -1,0 +1,63 @@
+{
+  "format_version": 1,
+  "architecture": "smp.Unet/resnet18/depth3",
+  "input_scale": 1,
+  "history_frames": 0,
+  "local_contrast": true,
+  "small_area_reference": null,
+  "temporal": true,
+  "noise_augmentation": false,
+  "mean": [
+    0.6943426728248596,
+    0.0007843017810955644,
+    -1.9460155709083438e-11,
+    6.071483593661497e-11
+  ],
+  "std": [
+    0.3549228310585022,
+    0.3007766902446747,
+    0.1916843056678772,
+    0.13786649703979492
+  ],
+  "best_epoch": 4,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.2734614203373591,
+      "validation_loss": 0.4231693267822266
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.2542440657814344,
+      "validation_loss": 0.42077515920003256
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.23777747104565303,
+      "validation_loss": 0.4229116370280584
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.22297189980745316,
+      "validation_loss": 0.41465113361676537
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.21315136253833772,
+      "validation_loss": 0.422977602481842
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.21324600726366044,
+      "validation_loss": 0.4215657641490301
+    }
+  ],
+  "trainable_parameters": 823597,
+  "checkpoint": "local_contrast.pt",
+  "weight_sha256": "2fba61beda4fed1f7223b8ceb3ae4d2ef2a6447a0d5c51f1df180a19a9d7d422",
+  "registered": true,
+  "parent_weight_sha256": "0a836e14e1b8826407c4aa2ccf1d7dfc714bed24d89f65a484f92d818afe3eaa",
+  "threshold": 0.5,
+  "min_area": 8,
+  "closing": true
+}

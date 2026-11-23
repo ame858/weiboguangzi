@@ -1,0 +1,9 @@
+{
+  "epochs": 16,
+  "seed": 20261119,
+  "batch_size": 32,
+  "device": "cpu",
+  "gate_px": 12.0,
+  "max_gap": 2,
+  "match_iou": 0.5
+}

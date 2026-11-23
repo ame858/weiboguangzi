@@ -1,0 +1,727 @@
+{
+  "version": 1,
+  "seed": 73,
+  "entries": [
+    {
+      "path": "scene-000",
+      "scene_id": "scene-000",
+      "trajectory_family": "scene-000",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-001",
+      "scene_id": "scene-001",
+      "trajectory_family": "scene-001",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-002",
+      "scene_id": "scene-002",
+      "trajectory_family": "scene-002",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-003",
+      "scene_id": "scene-003",
+      "trajectory_family": "scene-003",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-004",
+      "scene_id": "scene-004",
+      "trajectory_family": "scene-004",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-005",
+      "scene_id": "scene-005",
+      "trajectory_family": "scene-005",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-006",
+      "scene_id": "scene-006",
+      "trajectory_family": "scene-006",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-007",
+      "scene_id": "scene-007",
+      "trajectory_family": "scene-007",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-008",
+      "scene_id": "scene-008",
+      "trajectory_family": "scene-008",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-009",
+      "scene_id": "scene-009",
+      "trajectory_family": "scene-009",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-010",
+      "scene_id": "scene-010",
+      "trajectory_family": "scene-010",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-011",
+      "scene_id": "scene-011",
+      "trajectory_family": "scene-011",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-012",
+      "scene_id": "scene-012",
+      "trajectory_family": "scene-012",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-013",
+      "scene_id": "scene-013",
+      "trajectory_family": "scene-013",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-014",
+      "scene_id": "scene-014",
+      "trajectory_family": "scene-014",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-015",
+      "scene_id": "scene-015",
+      "trajectory_family": "scene-015",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-016",
+      "scene_id": "scene-016",
+      "trajectory_family": "scene-016",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-017",
+      "scene_id": "scene-017",
+      "trajectory_family": "scene-017",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-018",
+      "scene_id": "scene-018",
+      "trajectory_family": "scene-018",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-019",
+      "scene_id": "scene-019",
+      "trajectory_family": "scene-019",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-020",
+      "scene_id": "scene-020",
+      "trajectory_family": "scene-020",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-021",
+      "scene_id": "scene-021",
+      "trajectory_family": "scene-021",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-022",
+      "scene_id": "scene-022",
+      "trajectory_family": "scene-022",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-023",
+      "scene_id": "scene-023",
+      "trajectory_family": "scene-023",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-024",
+      "scene_id": "scene-024",
+      "trajectory_family": "scene-024",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-025",
+      "scene_id": "scene-025",
+      "trajectory_family": "scene-025",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-026",
+      "scene_id": "scene-026",
+      "trajectory_family": "scene-026",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-027",
+      "scene_id": "scene-027",
+      "trajectory_family": "scene-027",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-028",
+      "scene_id": "scene-028",
+      "trajectory_family": "scene-028",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-029",
+      "scene_id": "scene-029",
+      "trajectory_family": "scene-029",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-030",
+      "scene_id": "scene-030",
+      "trajectory_family": "scene-030",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-031",
+      "scene_id": "scene-031",
+      "trajectory_family": "scene-031",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-032",
+      "scene_id": "scene-032",
+      "trajectory_family": "scene-032",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-033",
+      "scene_id": "scene-033",
+      "trajectory_family": "scene-033",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-034",
+      "scene_id": "scene-034",
+      "trajectory_family": "scene-034",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-035",
+      "scene_id": "scene-035",
+      "trajectory_family": "scene-035",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-036",
+      "scene_id": "scene-036",
+      "trajectory_family": "scene-036",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-037",
+      "scene_id": "scene-037",
+      "trajectory_family": "scene-037",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-038",
+      "scene_id": "scene-038",
+      "trajectory_family": "scene-038",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-039",
+      "scene_id": "scene-039",
+      "trajectory_family": "scene-039",
+      "split": "train",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-040",
+      "scene_id": "scene-040",
+      "trajectory_family": "scene-040",
+      "split": "train",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-041",
+      "scene_id": "scene-041",
+      "trajectory_family": "scene-041",
+      "split": "train",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-042",
+      "scene_id": "scene-042",
+      "trajectory_family": "scene-042",
+      "split": "train",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-043",
+      "scene_id": "scene-043",
+      "trajectory_family": "scene-043",
+      "split": "train",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-044",
+      "scene_id": "scene-044",
+      "trajectory_family": "scene-044",
+      "split": "train",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-045",
+      "scene_id": "scene-045",
+      "trajectory_family": "scene-045",
+      "split": "validation",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-046",
+      "scene_id": "scene-046",
+      "trajectory_family": "scene-046",
+      "split": "validation",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-047",
+      "scene_id": "scene-047",
+      "trajectory_family": "scene-047",
+      "split": "validation",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-048",
+      "scene_id": "scene-048",
+      "trajectory_family": "scene-048",
+      "split": "validation",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-049",
+      "scene_id": "scene-049",
+      "trajectory_family": "scene-049",
+      "split": "validation",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-050",
+      "scene_id": "scene-050",
+      "trajectory_family": "scene-050",
+      "split": "validation",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-051",
+      "scene_id": "scene-051",
+      "trajectory_family": "scene-051",
+      "split": "validation",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-052",
+      "scene_id": "scene-052",
+      "trajectory_family": "scene-052",
+      "split": "validation",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-053",
+      "scene_id": "scene-053",
+      "trajectory_family": "scene-053",
+      "split": "validation",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-054",
+      "scene_id": "scene-054",
+      "trajectory_family": "scene-054",
+      "split": "validation",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-055",
+      "scene_id": "scene-055",
+      "trajectory_family": "scene-055",
+      "split": "validation",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-056",
+      "scene_id": "scene-056",
+      "trajectory_family": "scene-056",
+      "split": "validation",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-057",
+      "scene_id": "scene-057",
+      "trajectory_family": "scene-057",
+      "split": "validation",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-058",
+      "scene_id": "scene-058",
+      "trajectory_family": "scene-058",
+      "split": "validation",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-059",
+      "scene_id": "scene-059",
+      "trajectory_family": "scene-059",
+      "split": "validation",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-060",
+      "scene_id": "scene-060",
+      "trajectory_family": "scene-060",
+      "split": "validation",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-061",
+      "scene_id": "scene-061",
+      "trajectory_family": "scene-061",
+      "split": "validation",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-062",
+      "scene_id": "scene-062",
+      "trajectory_family": "scene-062",
+      "split": "validation",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-063",
+      "scene_id": "scene-063",
+      "trajectory_family": "scene-063",
+      "split": "test",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-064",
+      "scene_id": "scene-064",
+      "trajectory_family": "scene-064",
+      "split": "test",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-065",
+      "scene_id": "scene-065",
+      "trajectory_family": "scene-065",
+      "split": "test",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-066",
+      "scene_id": "scene-066",
+      "trajectory_family": "scene-066",
+      "split": "test",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-067",
+      "scene_id": "scene-067",
+      "trajectory_family": "scene-067",
+      "split": "test",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-068",
+      "scene_id": "scene-068",
+      "trajectory_family": "scene-068",
+      "split": "test",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-069",
+      "scene_id": "scene-069",
+      "trajectory_family": "scene-069",
+      "split": "test",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-070",
+      "scene_id": "scene-070",
+      "trajectory_family": "scene-070",
+      "split": "test",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-071",
+      "scene_id": "scene-071",
+      "trajectory_family": "scene-071",
+      "split": "test",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-072",
+      "scene_id": "scene-072",
+      "trajectory_family": "scene-072",
+      "split": "test",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-073",
+      "scene_id": "scene-073",
+      "trajectory_family": "scene-073",
+      "split": "test",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-074",
+      "scene_id": "scene-074",
+      "trajectory_family": "scene-074",
+      "split": "test",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-075",
+      "scene_id": "scene-075",
+      "trajectory_family": "scene-075",
+      "split": "test",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-076",
+      "scene_id": "scene-076",
+      "trajectory_family": "scene-076",
+      "split": "test",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-077",
+      "scene_id": "scene-077",
+      "trajectory_family": "scene-077",
+      "split": "test",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-078",
+      "scene_id": "scene-078",
+      "trajectory_family": "scene-078",
+      "split": "test",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-079",
+      "scene_id": "scene-079",
+      "trajectory_family": "scene-079",
+      "split": "test",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-080",
+      "scene_id": "scene-080",
+      "trajectory_family": "scene-080",
+      "split": "test",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-081",
+      "scene_id": "scene-081",
+      "trajectory_family": "scene-081",
+      "split": "test",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-082",
+      "scene_id": "scene-082",
+      "trajectory_family": "scene-082",
+      "split": "test",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-083",
+      "scene_id": "scene-083",
+      "trajectory_family": "scene-083",
+      "split": "test",
+      "condition": "empty",
+      "source": "sar"
+    },
+    {
+      "path": "scene-084",
+      "scene_id": "scene-084",
+      "trajectory_family": "scene-084",
+      "split": "test",
+      "condition": "high_noise",
+      "source": "sar"
+    },
+    {
+      "path": "scene-085",
+      "scene_id": "scene-085",
+      "trajectory_family": "scene-085",
+      "split": "test",
+      "condition": "small_fast",
+      "source": "sar"
+    },
+    {
+      "path": "scene-086",
+      "scene_id": "scene-086",
+      "trajectory_family": "scene-086",
+      "split": "test",
+      "condition": "exit",
+      "source": "sar"
+    },
+    {
+      "path": "scene-087",
+      "scene_id": "scene-087",
+      "trajectory_family": "scene-087",
+      "split": "test",
+      "condition": "texture",
+      "source": "sar"
+    },
+    {
+      "path": "scene-088",
+      "scene_id": "scene-088",
+      "trajectory_family": "scene-088",
+      "split": "test",
+      "condition": "clutter",
+      "source": "sar"
+    },
+    {
+      "path": "scene-089",
+      "scene_id": "scene-089",
+      "trajectory_family": "scene-089",
+      "split": "test",
+      "condition": "empty",
+      "source": "sar"
+    }
+  ],
+  "profile": "sar"
+}

@@ -1,0 +1,45 @@
+{
+  "dataset_sha256": "77f760daebc3e92612d00bce96726121a063a25c7a9111ba8c49caf1d7963422",
+  "selected_candidate": "finetuned",
+  "normal_recall_reference": 0.9083333333333333,
+  "retuned": {
+    "threshold": 0.3,
+    "min_area": 12,
+    "closing": true,
+    "false_positive": 44,
+    "precision": 0.8314176245210728,
+    "recall": 0.6027777777777777,
+    "target_f1": 0.6988727858293076,
+    "normal_recall": 0.925,
+    "small_recall": 0.44166666666666665
+  },
+  "finetuned": {
+    "threshold": 0.3,
+    "min_area": 12,
+    "closing": true,
+    "false_positive": 45,
+    "precision": 0.8615384615384616,
+    "recall": 0.7777777777777778,
+    "target_f1": 0.8175182481751825,
+    "normal_recall": 0.975,
+    "small_recall": 0.6791666666666667
+  },
+  "operating_points": {
+    "frozen": {
+      "threshold": 0.83,
+      "min_area": 24,
+      "closing": true
+    },
+    "retuned": {
+      "threshold": 0.3,
+      "min_area": 12,
+      "closing": true
+    },
+    "finetuned": {
+      "threshold": 0.3,
+      "min_area": 12,
+      "closing": true
+    }
+  },
+  "finetuned_sha256": "0a836e14e1b8826407c4aa2ccf1d7dfc714bed24d89f65a484f92d818afe3eaa"
+}

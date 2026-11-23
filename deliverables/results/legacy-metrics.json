@@ -1,0 +1,175 @@
+{
+  "detection": {
+    "intersection_pixels": 12192,
+    "union_pixels": 12288,
+    "predicted_pixels": 12192,
+    "truth_pixels": 12288,
+    "iou": 0.9921875,
+    "f1": 0.996078431372549,
+    "matched": 24,
+    "false_positive": 0,
+    "missed": 0,
+    "frames": [
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      },
+      {
+        "iou": 0.9921875,
+        "best_component_iou": 0.9921875,
+        "predicted_components": 1,
+        "target_visible": true
+      }
+    ]
+  },
+  "tracking": {
+    "visible_frames": 24,
+    "located_visible_frames": 24,
+    "measured_visible_frames": 24,
+    "continuity": 1.0,
+    "location_rmse_px": 0.0,
+    "location_squared_error_px2": 0.0,
+    "predicted_on_invisible_frames": 0,
+    "velocity_error_px_s": 0.0,
+    "velocity_error_mps": null,
+    "true_shadow_velocity_px_s": [
+      29.999999999999996,
+      4.999999999999993
+    ]
+  },
+  "match_iou": 0.3
+}
