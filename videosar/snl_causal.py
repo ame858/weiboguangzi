@@ -45,11 +45,19 @@ def detection_metrics(tally, frames):
     }
 
 
+def frame_quantile_contrast(gray):
+    """Fit a monotone intensity map on the current frame without moving pixels."""
+    counts = np.bincount(gray.ravel(), minlength=256).cumsum()
+    low, median, high = np.searchsorted(counts, gray.size * np.array([0.10, 0.50, 0.90]))
+    scale = max(int(high - low), 8)
+    return np.clip(0.5 + (gray.astype(np.float32) - median) * np.float32(0.65 / scale), 0, 1).astype(np.float32)
+
+
 class CausalFeatures:
     """Per-frame channels and traditional scores with bounded causal history."""
 
     def __init__(self, profile="raw"):
-        stacked_profiles = ("stacked", "stacked-standardized", "stacked-long", "background-history")
+        stacked_profiles = ("stacked", "stacked-standardized", "stacked-quantile", "stacked-long", "background-history")
         if profile not in ("raw", "standardized", "registered", "histogram", "histogram-registered", *stacked_profiles):
             raise ValueError("Unknown radar feature profile")
         self.profile = profile
@@ -71,6 +79,8 @@ class CausalFeatures:
         """Advance the scanner for a consumer that only needs the network input."""
         if self.profile in ("stacked", "stacked-long", "background-history"):
             return self._stack(np.asarray(gray, dtype=np.float32) / np.float32(255))
+        if self.profile == "stacked-quantile":
+            return self._stack(frame_quantile_contrast(gray))
         return self.update(gray)[0]
 
     def update(self, gray):
@@ -85,6 +95,8 @@ class CausalFeatures:
             square = ndimage.uniform_filter(image * image, size=25, mode="nearest")
             scale = np.sqrt(np.maximum(square - center * center, 0.012**2))
             image = np.clip(0.5 + 0.18 * (image - center) / scale, 0, 1)
+        if self.profile == "stacked-quantile":
+            image = frame_quantile_contrast(gray)
         smooth = ndimage.uniform_filter(image, size=3, mode="nearest")
         past = self.history
         delays = (6, 12, 15, 18, 24, 30)

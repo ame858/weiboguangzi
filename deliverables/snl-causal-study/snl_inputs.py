@@ -185,7 +185,7 @@ def feature_cache(output, gray, high, scan):
     data = np.lib.format.open_memmap(temp, mode="w+", dtype=np.uint8,
                                     shape=shape)
     for offset in range(high - 1):
-        channels, _, _ = scan.update(gray[offset])
+        channels = scan.network_channels(gray[offset])
         data[offset] = np.rint(channels * 255).astype(np.uint8)
     data.flush()
     del data

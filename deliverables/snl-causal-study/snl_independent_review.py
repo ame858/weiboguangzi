@@ -39,7 +39,7 @@ https://www.sandia.gov/app/uploads/sites/124/2021/08/eubankgateandtrafficvideosa
 """
 
 
-def export(output, folder, ffmpeg):
+def export(output, folder, ffmpeg, *, causal=False):
     gray = load_gray(output, ffmpeg)
     for name in ("frames", "context"):
         (folder / name).mkdir(parents=True, exist_ok=True)
@@ -48,7 +48,8 @@ def export(output, folder, ffmpeg):
     for split, ids, count in zip(("training", "calibration", "development"), PROFILES["prospective"], SAMPLE_COUNTS, strict=True):
         positions = np.linspace(ids[0] + 1, ids[-1] - 1, count).round().astype(int)
         for index in positions:
-            first, last = max(2, index - CONTEXT), index + CONTEXT
+            first = max(2, index - (2 * CONTEXT if causal else CONTEXT))
+            last = index if causal else index + CONTEXT
             if sealed.intersection(range(first, last + 1)):
                 raise ValueError("A review window overlaps a sealed test interval")
             tag = f"review-{len(rows) + 1:02d}"
@@ -56,20 +57,29 @@ def export(output, folder, ffmpeg):
             mp4 = folder / "context" / f"{tag}.mp4"
             Image.fromarray(gray[index - 2]).save(png)
             frames = gray[first - 2:last - 1]
+            quality = ["-crf", "0", "-vf", "scale=in_range=full:out_range=full", "-color_range", "pc"] if causal else ["-crf", "19"]
             subprocess.run([ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pixel_format", "gray", "-video_size",
                             f"{WIDTH}x{HEIGHT}", "-framerate", "8", "-i", "pipe:0", "-c:v", "libx264", "-preset",
-                            "fast", "-crf", "19", "-pix_fmt", "yuv420p", str(mp4)], input=frames.tobytes(), check=True)
+                            "fast", *quality, "-pix_fmt", "yuv420p", str(mp4)], input=frames.tobytes(), check=True)
             with Image.open(png) as check:
                 np.testing.assert_array_equal(np.asarray(check), gray[index - 2])
             decoded = subprocess.check_output([ffmpeg, "-v", "error", "-i", str(mp4), "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"])
             restored = np.frombuffer(decoded, dtype=np.uint8).reshape(-1, HEIGHT, WIDTH)
-            if len(restored) != len(frames) or np.mean(np.abs(restored[index - first].astype(np.int16) - gray[index - 2])) > 4:
+            if causal:
+                np.testing.assert_array_equal(restored, frames, err_msg=f"Review context {tag}")
+            elif len(restored) != len(frames) or np.mean(np.abs(restored[index - first].astype(np.int16) - gray[index - 2])) > 4:
                 raise ValueError(f"Review context did not reproduce frame {index}")
             rows.append(dict(sample=tag, split=split, annotation_id=int(index), source_frame_zero_based=int(index + 148),
                              target_frame_in_clip=int(index - first + 1), image_sha256=sha_file(png)))
     write_csv(folder / "manifest.csv", rows)
-    write_json(folder / "manifest.json", dict(video_sha256=sha_file(VIDEO), sample_count=len(rows), frames=rows))
-    (folder / "README.txt").write_text(INSTRUCTIONS, encoding="utf-8-sig")
+    policy = "past_and_current" if causal else "bidirectional"
+    write_json(folder / "manifest.json", dict(video_sha256=sha_file(VIDEO), context_policy=policy,
+                                             sample_count=len(rows), frames=rows))
+    instructions = INSTRUCTIONS
+    if causal:
+        instructions = instructions.replace("显示目标前后的短片", "只显示目标帧及此前的画面，末帧即为目标帧")
+        instructions = instructions.replace("\n\n* 用 shadow", "\n请按文件编号顺序复标。先保存当前帧的结果，再打开下一帧。\n\n* 用 shadow")
+    (folder / "README.txt").write_text(instructions, encoding="utf-8-sig")
     archive = folder.with_suffix(".zip")
     files = [folder / name for name in ("README.txt", "manifest.csv", "manifest.json")]
     files.extend(folder / kind / f"{row['sample']}.{extension}" for row in rows
@@ -154,6 +164,19 @@ def model_counts(predictions, independent, community):
                 model_community_only=len(second - first), model_unmatched=len(predictions) - len(first | second))
 
 
+def summarize_agreement(rows):
+    totals = {key: sum(row[key] for row in rows) for key in rows[0] if key not in ("sample", "split", "annotation_id")}
+    agreement = {}
+    for rule in ("iou50", "center5"):
+        hits = totals[f"{rule}_matches"]
+        agreement[rule] = detection_metrics((hits, totals["independent"] - hits, totals["community"] - hits), len(rows))
+    metrics = {}
+    for label in ("independent", "community"):
+        hits = totals[f"model_iou50_{label}"]
+        metrics[label] = detection_metrics((hits, totals["prediction_count"] - hits, totals[label] - hits), len(rows))
+    return dict(totals, annotation_agreement=agreement, model_metrics=metrics)
+
+
 def compare(output, folder, labels, ffmpeg, *, replay=REPLAY):
     manifest = read_json(folder / "manifest.json")
     frames = manifest["frames"]
@@ -185,15 +208,11 @@ def compare(output, folder, labels, ffmpeg, *, replay=REPLAY):
                             independent_only=len(independent) - tp, community_only=len(known) - tp, uncertain=uncertain,
                             **model_counts(predictions[row["source_frame_zero_based"]], independent, known)))
     write_csv(folder / "agreement.csv", results)
-    summary = {"model_sha256": model}
+    summary = {"model_sha256": model, "context_policy": manifest.get("context_policy", "bidirectional"),
+               "overall": summarize_agreement(results)}
     for split in ("training", "calibration", "development"):
         rows = [row for row in results if row["split"] == split]
-        totals = {key: sum(row[key] for row in rows) for key in results[0] if key not in ("sample", "split", "annotation_id")}
-        metrics = {}
-        for label in ("independent", "community"):
-            hits = totals[f"model_iou50_{label}"]
-            metrics[label] = detection_metrics((hits, totals["prediction_count"] - hits, totals[label] - hits), len(rows))
-        summary[split] = dict(totals, model_metrics=metrics)
+        summary[split] = summarize_agreement(rows)
     write_json(folder / "agreement.json", summary)
     print(summary, flush=True)
 
@@ -201,12 +220,14 @@ def compare(output, folder, labels, ffmpeg, *, replay=REPLAY):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT / "prospective")
-    parser.add_argument("--folder", type=Path, default=DEFAULT_OUTPUT / "independent-review")
+    parser.add_argument("--folder", type=Path)
     parser.add_argument("--ffmpeg", required=True)
     parser.add_argument("--labels", type=Path, help="Returned LabelMe directory or ZIP archive")
     parser.add_argument("--replay", type=Path, default=REPLAY, help="Verified frozen-model replay directory")
+    parser.add_argument("--causal-context", action="store_true", help="End each review clip on its target frame")
     args = parser.parse_args()
+    folder = args.folder or DEFAULT_OUTPUT / ("independent-review-causal" if args.causal_context else "independent-review")
     if args.labels is None:
-        export(args.output.resolve(), args.folder.resolve(), args.ffmpeg)
+        export(args.output.resolve(), folder.resolve(), args.ffmpeg, causal=args.causal_context)
     else:
-        compare(args.output.resolve(), args.folder.resolve(), args.labels.resolve(), args.ffmpeg, replay=args.replay.resolve())
+        compare(args.output.resolve(), folder.resolve(), args.labels.resolve(), args.ffmpeg, replay=args.replay.resolve())

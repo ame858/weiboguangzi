@@ -375,7 +375,13 @@ def peak_ranking_loss(logits, heat):
     return margin.sum() / max(1, margin.numel())
 
 
-def center_loss(model, output, targets, soft_heat=False, quality_focal=False, mask_images=None, rank_peaks=False):
+def nwd_similarity(center_a, size_a, center_b, size_b, scale):
+    delta = torch.cat((center_a - center_b, (size_a - size_b) / 2), dim=1)
+    return torch.exp(-torch.linalg.vector_norm(delta, dim=1) / scale)
+
+
+def center_loss(model, output, targets, soft_heat=False, quality_focal=False, mask_images=None, rank_peaks=False,
+                nwd_scale=None):
     device = output.device
     heat, foreground, addresses, values = (torch.from_numpy(value).to(device)
                                           for value in make_targets(targets, *output.shape[-2:],
@@ -406,7 +412,11 @@ def center_loss(model, output, targets, soft_heat=False, quality_focal=False, ma
         union = p_size.prod(dim=1) + t_size.prod(dim=1) - inter
         encompassing = (torch.maximum(p_high,t_high)-torch.minimum(p_low,t_low)).prod(dim=1)
         overlap_quality = inter / union
-        geometry_loss += (1 - overlap_quality + (encompassing-union)/encompassing).mean()
+        if nwd_scale is None:
+            geometry_loss += (1 - overlap_quality + (encompassing-union)/encompassing).mean()
+        else:
+            overlap_quality = nwd_similarity(p_center, p_size, t_center, t_size, nwd_scale)
+            geometry_loss += (1 - overlap_quality).mean()
     if quality_focal:
         flat_quality = probability.new_zeros((probability.numel(),))
         if overlap_quality is not None:
@@ -434,9 +444,14 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                  space_to_depth=False, shared_temporal=False, line_context=False, weak_shadow_augment=False,
                  quality_focal=False, rebalance_targets=False, box_projection=False, local_gain_augment=False,
                  seed=1729, pretrained=None, pretraining_epochs=None, recurrent_temporal=False,
-                 mixed_temporal=False, rank_peaks=False, task_alignment=False, hard_tiles=()):
+                 mixed_temporal=False, rank_peaks=False, task_alignment=False, hard_tiles=(),
+                 nwd_scale=None, epoch_budget=None):
     if initial and pretrained:
         raise ValueError("Choose one initialization checkpoint")
+    if nwd_scale is not None and (not np.isfinite(nwd_scale) or nwd_scale <= 0 or not dense_offsets or task_alignment):
+        raise ValueError("NWD needs a positive finite scale and the dense geometry head")
+    if epoch_budget is not None and (epoch_budget < 12 or epoch_budget % 12 or pretraining_epochs is not None or initial):
+        raise ValueError("The training budget must be a positive multiple of the normal checkpoint interval")
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     device = backend()
@@ -454,7 +469,7 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                            task_alignment=task_alignment).to(device)
     if background is not None:
         model.background.load_state_dict(background.state_dict())
-    epochs, learning_rate, checkpoint_interval = EPOCHS, 0.001, 12
+    epochs, learning_rate, checkpoint_interval = epoch_budget or EPOCHS, 0.001, 12
     if pretraining_epochs is not None:
         if pretraining_epochs < 1 or pretrained or initial:
             raise ValueError("Source pretraining needs a positive budget and fresh initialization")
@@ -494,6 +509,8 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
         tag += f"-{input_profile}"
     if dense_offsets:
         tag += "-iou"
+    if nwd_scale is not None:
+        tag += "-nwd"
     if initial:
         tag += "-recent"
     if pretraining_epochs is not None:
@@ -563,7 +580,8 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
             optimizer.zero_grad(set_to_none=True)
             mask_images = images[:, 0] if box_projection else None
             loss = center_loss(model, model(images), targets, soft_heat=soft_heat,
-                               quality_focal=quality_focal, mask_images=mask_images, rank_peaks=rank_peaks)
+                               quality_focal=quality_focal, mask_images=mask_images, rank_peaks=rank_peaks,
+                               nwd_scale=nwd_scale)
             if not torch.isfinite(loss):
                 raise RuntimeError("Center detector produced a non-finite loss")
             loss.backward()
@@ -587,6 +605,8 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                 config["pretrained_sha256"] = pretrained["sha256"]
             if hard_tiles:
                 config["extra_training_tiles"] = len(hard_tiles)
+            if nwd_scale is not None:
+                config["nwd_scale_px"] = nwd_scale
             if learned_background:
                 config["learned_background"] = True
             if space_to_depth:
