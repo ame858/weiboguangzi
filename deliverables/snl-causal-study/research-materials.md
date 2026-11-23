@@ -19,6 +19,10 @@ MTT-RFBMFC 在 SNL 和 BIRM 的视频 SAR 上评测。固定提交 `db0004321fff
 
 VSDFormer 固定提交 `c61fb8e744c06f22815f07ad1a0377bebd7c9feb` 提供多段雷达视频。已取得澳大利亚和卡塔尔的原始带斑视频，各 313 帧、25 fps、720×720。它们可提供与 Eubank 独立的实测背景。序列的真实阴影框仍待取得。[固定版视频目录](https://github.com/BFY-official/VSDFormer/tree/c61fb8e744c06f22815f07ad1a0377bebd7c9feb/Videos)
 
+2026-11-23 复核 VSMB 的发布入口。作者仓库列出 45 段标注视频，并提供网盘和邮件申请入口。本轮仍未取得可读取的数据归档，Hugging Face 镜像请求仍开放。取得 VSMB 后，先核对每段实际采集来源并识别与 SNL 重叠的画面，再选择独立实测场景。[作者仓库](https://github.com/softwarePupil/VSMB) · [镜像请求](https://github.com/softwarePupil/VSMB/issues/1)
+
+余安喜等的跟踪研究声明机载实测部分使用 SNL，逐帧阴影由人工标注，论文列出向通讯作者申请数据的方式。这可作为同源重标的另一条线索，需索取精确帧号和原尺寸框。何志华等发表了 SNL 车辆标注示例，期刊页面的资源附件数为零。这两项均未找到可直接计分的逐帧文件。[余安喜等，2025](https://doi.org/10.3390/rs17060959) · [何志华等，2022](https://doi.org/10.11999/JEIT210853)
+
 ## 可以直接复用的证据
 
 - Jiangxb8 的 Faster R-CNN 在 14 帧校准段选中第 8 轮。在相同 48 帧、449 个标签的开发复核段命中 106 个、误报 536 个，查准率 **16.51%**、召回率 **23.61%**、F1 **19.43%**。七帧交付工具的对应数值为 36.69%、22.72%、28.06%。两者都用逐帧一对一框 IoU ≥ 0.50。 [开源方法实跑记录](../../runs/snl-causal-study/prospective/decision-jiang-faster-rcnn-1x-epoch8.json)

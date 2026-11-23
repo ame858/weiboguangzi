@@ -112,8 +112,8 @@ def read_review(source, samples):
     return found
 
 
-def review_boxes(data, png):
-    if (data["imageWidth"], data["imageHeight"]) != (WIDTH, HEIGHT) or Path(data["imagePath"]).name != png.name:
+def review_boxes(data, png, *, image_size=(WIDTH, HEIGHT)):
+    if (data["imageWidth"], data["imageHeight"]) != image_size or Path(data["imagePath"]).name != png.name:
         raise ValueError(f"LabelMe frame mismatch: {png.name}")
     if data.get("imageData"):
         with Image.open(io.BytesIO(base64.b64decode(data["imageData"]))) as embedded, Image.open(png) as expected:
@@ -125,7 +125,7 @@ def review_boxes(data, png):
             raise ValueError(f"Unexpected shape or label in {png.name}")
         points = np.asarray(shape["points"], dtype=np.float32).reshape(2, 2)
         low, high = points.min(axis=0), points.max(axis=0)
-        if not np.isfinite(points).all() or np.any(low < 0) or np.any(high > [WIDTH, HEIGHT]) or np.any(high <= low):
+        if not np.isfinite(points).all() or np.any(low < 0) or np.any(high > image_size) or np.any(high <= low):
             raise ValueError(f"Invalid rectangle in {png.name}")
         boxes[shape["label"]].append(np.concatenate((low, high)))
     return np.asarray(boxes["shadow"], dtype=np.float32).reshape(-1, 4), len(boxes["uncertain"])

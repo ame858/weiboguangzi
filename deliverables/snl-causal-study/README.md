@@ -659,3 +659,179 @@ F1 差值为 +1.57 个百分点，六帧分块配对的 95% 区间为 [−2.48�
 ```powershell
 & $studyPy deliverables\snl-causal-study\snl_rolling_nwd.py --output $run --ffmpeg $f
 ```
+
+## 候选互证与保留原框补检
+
+复用滚动验证的四组 24 轮检查点，每组每帧导出 1,024 个密集候选。候选位置和宽高固定。互证分在 5 像素内按中心接近度或框 IoU 加权。框重叠分另要求 IoU ≥ 0.35。同一模型的多个近邻只取最高支持，三个其他模型的支持分取均值，再和候选原分混合。三个训练时段的 93 帧折外预测用于选混合权重、NMS 和置信度阈值。随后用原校准段与已用过的开发段复核。
+
+| 独立输出方式 | 折外 F1 | 开发 F1 | 固定交付版每帧输出数量时的开发命中 |
+| --- | ---: | ---: | ---: |
+| 七帧交付版 | — | 28.06% | 102 |
+| 原灰度 + GIoU，局部峰值 | 32.89% | 23.74% | 89 |
+| 原灰度 + GIoU，密集候选 | 32.58% | 23.29% | 85 |
+| 四组合并，保留各自原分 | 33.96% | 21.48% | 76 |
+| 四组中心互证 | 33.35% | 20.85% | 72 |
+| 四组框重叠互证 | 34.41% | 21.63% | 77 |
+
+补检流程保留原有框。在补检候选中移除与已有框中心距 ≤5 像素或 IoU ≥ 0.35 的框，再用 NMS 去重。训练段内用原灰度 + GIoU 的折外峰值输出作为已有框，选择补检阈值和每帧 0、1、2 或最多 4 个补检框。复核阶段以交付模型的已核验输出为已有框。折外首选四组原分补检，冻结阈值为 0.35。框互证补检组的阈值为 0.30，两组上限均为每帧 4 个。
+
+| 补检方式 | 校准复核 F1 | 开发新增命中／误报 | 开发查准率 | 开发召回率 | 开发 F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 七帧交付版 | 26.40% | 0／0 | 36.69% | 22.72% | 28.06% |
+| 四组原分补检 | 25.45% | 7／45 | 33.03% | 24.28% | 27.98% |
+| 四组框重叠互证补检 | 25.23% | 12／52 | 33.33% | 25.39% | 28.82% |
+
+框互证补检在开发段比交付版高 0.76 个百分点 F1，六帧分块配对 95% 区间为 [−0.69，+2.16] 个百分点。固定原分组的逐帧补检数量，两组分别新增 7 和 8 个命中。固定框互证组的逐帧补检数量，两组均新增 12 个命中。折外首选在开发段 F1 略低于交付版。补检作为研究配置，正式验收段继续封存。
+
+另在原七帧 4,096 格点与多尺度局部候选的基础上加入本轮四组密集框。去重及排序前，真值辅助的一对一匹配由 365/449 提高到 373/449。这个数值描述候选池的几何覆盖。正式评测仍使用冻结输出和 IoU ≥ 0.50。
+
+运行在 `runs/snl-causal-study/prospective/candidate-consensus` 保存权重哈希与冻结参数、双口径评分、逐帧计数及候选覆盖审计。命令沿用上节滚动验证权重和已核验的七帧交付模型回放。覆盖审计另需先前留存的 4,096 格点和运动特征。
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_candidate_consensus.py --output $run --ffmpeg $f --audit-expanded-coverage
+```
+
+## 卡塔尔道路跨场景试验
+
+从 VSDFormer 固定版本取 `Noisy_Qatar.mp4`。25 fps 播放文件的 313 帧有 24 个相邻画面差异显著的切换点，间距交替为 12、13 帧。按每个停留画面的首帧得到 25 个不同画面。分组内相邻帧的绝对灰度差均值的 95 百分位为 0.047，切换点最小值为 4.666。直接使用发布视频的 720×720 网格，推理时以 0 基序号 0–24 顺序输入冻结 SNL 模型，置信度 0.25、NMS 0.35。沿用原历史索引和起始补齐方式，30 帧历史在这段短序列内无法填满。[视频来源](https://github.com/BFY-official/VSDFormer/tree/c61fb8e744c06f22815f07ad1a0377bebd7c9feb/Videos)
+
+从第 8 个画面起取 18 帧盲标，原图道路裁剪范围为 `(x=0, y=280, 宽=720, 高=266)`。每段无损复标短片只包含目标帧及此前 7 个不同画面。评测取预测中心落在道路区域内的框，并裁至该区域后分别做一对一 IoU ≥ 0.50 和中心距 ≤5 像素评分。道路区域共有 29 个冻结预测，独立标注待回收。ZIP 位于本地 `runs/snl-causal-study/external-sar/qatar-transfer-pilot/qatar-blind-review.zip`，叠框与预测表保存在同级独立目录 `frozen-predictions`。
+
+使用新目录重跑准备与推理，或用现有试验目录对返回的标注评分。评分按标注内容的哈希分目录保留，分别记录确认框的分数和 `uncertain` 的数量。
+
+```powershell
+$qatarPilot = 'runs\snl-causal-study\external-sar\qatar-transfer-pilot'
+& $studyPy deliverables\snl-causal-study\snl_qatar_pilot.py --output "${qatarPilot}-replay" --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_qatar_pilot.py --output $qatarPilot --labels 'D:\path\qatar-labels.zip'
+```
+
+### 同一采集的不同视频版本
+
+用时序中位图的特征点拟合 VSDFormer 到 ICEYE 官方 MP4 的坐标映射。卡塔尔和鹿特丹分别有 124、63 个空间内点，残差中位数为 0.36、0.61 个官方视频像素。扣除各自的时序中位图后，两地的 25 个发布版画面都在对应官方视频的同帧或相邻帧找到最高残差相关。两地分别各算一次采集。卡塔尔从发布版到官方网格的横、纵像素比例约为 0.821、0.595，鹿特丹约为 0.820、0.500。[官方开放库](https://www.iceye.com/open-data-initiative)
+
+卡塔尔 18 个已选盲标画面中，13 个的最高相关匹配与官方帧号一致。固定这 13 个画面、道路范围和 SNL 权重阈值，VSDFormer 版输出 18 个道路框，官方视频直接裁剪版输出 21 个，中心距 ≤5 像素和 IoU ≥0.50 均未出现相互匹配。将官方画面双线性重映射至发布版 720×720 网格后，模型输出 28 个道路框，与 VSDFormer 在两个口径下分别匹配 5 个。两种官方输入的对照使用同一批 25 帧，反映该模型对输入网格变化的敏感性。跨场景准确率、召回率仍由独立阴影标注评定。
+
+复算结果保存在本地 `runs/snl-causal-study/external-sar/source-provenance-controlled`。所需 ICEYE 视频与 STAC 清单位于 `runs/snl-causal-study/external-sar/iceye-open`。校验包与已冻结的卡塔尔试验继续使用 VSDFormer 的坐标。
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_external_provenance.py --output 'runs\snl-causal-study\external-sar\source-provenance-replay' --ffmpeg $f
+```
+
+## 实测背景上的注入阴影迁移
+
+用鹿特丹作为适配与校准来源。从卡塔尔和澳大利亚各取 9 个互不重叠的 192×192 背景块和 8 个观测时刻。每个背景窗口分别保留原画面、添加名义 5 灰度级阴影、添加名义 15 灰度级阴影。两种注入共用位置、尺寸和轨迹，尺寸与帧间位移来自 SNL 早期 295 帧的统计。两个测试场景合计 432 个样本和 288 个注入框，检测输入只使用当前及历史画面。指标采用逐图块 IoU ≥0.50。未匹配的输出按注入框口径统计，其中可能含实测背景中的原有目标。
+
+冻结权重对照使用原阈值 0.25 和 NMS 0.35。适配前先比较置信度重选、前 8 个画面的灰度分位数映射、等比例放大。鹿特丹选中灰度映射和原分辨率，门槛仍为 0.25。随后两组网络以相同的 480 个鹿特丹样本、相同采样种子和 12 轮预算训练，校准使用鹿特丹右侧 3 个未进入训练的图块。两组只改变权重初始化。双背景组将其中 240 个训练样本的背景换成另一个场景，保留各个注入框、采样参数、总样本数、预算及校准区域。每个目标场景都由未用该场景训练的模型评分。
+
+| 方法 | 卡塔尔 F1 | 澳大利亚 F1 | 合计查准率 | 合计召回率 | 合计 F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 冻结 SNL | 5.03% | 1.26% | 2.88% | 3.47% | 3.15% |
+| 冻结 SNL，仅重选阈值 | 3.33% | 1.11% | 5.56% | 1.39% | 2.22% |
+| 冻结 SNL，前缀灰度映射 | 6.02% | 1.80% | 3.49% | 4.17% | 3.80% |
+| 鹿特丹样本从头训练 | 38.22% | 8.84% | 29.03% | 18.75% | 22.78% |
+| 鹿特丹样本，SNL 权重初始化 | 38.16% | 8.98% | 20.97% | 23.96% | 22.37% |
+| 平衡双背景从头训练 | 33.53% | 8.00% | 28.89% | 13.54% | 18.44% |
+
+从头训练多命中 44 个注入框，少报 205 个未匹配框，合计 F1 提高 19.64 个百分点。按两个固定场景内的空间背景块做 5,000 次配对重采样，95% 区间为 [12.63，27.95] 个百分点，随机种子 498。SNL 初始化减去从头训练的区间为 [−6.15，4.74] 个百分点。使用第二背景替换一半样本后，差值区间为 [−8.55，−0.81] 个百分点。两种鹿特丹训练对 144 个 5 级阴影分别只命中 4 个和 7 个，且澳大利亚的 72 个 5 级阴影均漏检。结果适用于这些实测背景、注入方式和固定场景，真实运动阴影的迁移成绩还需要独立标注。
+
+三个本地运行目录为 `runs/snl-causal-study/external-sar/injected-shadow-benchmark`、`injected-shadow-adaptation` 和 `injected-shadow-mixed`。其中包含冻结参数、模型检查点、逐样本计数及合计分数。重跑时使用新输出目录，双背景命令读取原单背景对照归档。
+
+```powershell
+$externalReplay = 'runs\snl-causal-study\external-sar\injected-shadow-replay'
+& $studyPy deliverables\snl-causal-study\snl_external_shadow_benchmark.py --output "$externalReplay\benchmark" --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_external_shadow_adaptation.py --output "$externalReplay\adaptation" --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_external_shadow_adaptation.py --mixed --reference-run "$externalReplay\adaptation" --output "$externalReplay\mixed" --ffmpeg $f
+```
+
+## 弱阴影与因果残差
+
+沿用同一批 480 个鹿特丹训练样本、12 轮预算、原中心模型结构和鹿特丹空间隔离校准。三个测试场景为卡塔尔、澳大利亚和此前未进入实验的丹佛，后者从 ICEYE 官方 MP4 固定取中心 720×720 像素。每轮测试使用同一批 216 个无注入窗口、216 个名义暗化 5 级的窗口、216 个名义暗化 15 级的窗口。两轮更换注入种子、窗口坐标和取帧时刻。三个场景的实测背景叠加 5 级注入后，目标框内的实际暗化中位数均为 5 个灰度级。[丹佛官方数据项](https://iceye-open-data-catalog.s3.us-west-2.amazonaws.com/stac-items/2025/11/ICEYE_9XJ64F_20251104T180718Z_6897825_X31_SLEDF.json)
+
+各分支仅在鹿特丹选阈值。先将无注入输出限制在原灰度操作点的校准计数，再按 5 级阴影命中数、总体 F1 选择阈值。校准上限为 24 个无注入窗口零输出。局部标准化在裁剪后的 25×25 邻域内做。在 25 个画面的短序列中，残差分支用可用历史图像的中位数减去当前图，替换总是空置的滞后 30 通道，计算时屏蔽所有缺失历史的填充值。
+
+| 轮次与输入 | 5 级阴影命中／216 | 无注入输出／216 个窗口 | 总体 F1 |
+| --- | ---: | ---: | ---: |
+| 第一轮 · 原灰度 | 2 | 174 | 11.07% |
+| 第一轮 · 局部标准化 | 0 | 8 | 7.95% |
+| 第一轮 · 局部标准化加残差 | 1 | 19 | 9.90% |
+| 第二轮 · 原灰度 | 1 | 190 | 10.58% |
+| 第二轮 · 原灰度加残差 | 1 | 36 | 17.17% |
+
+第二轮原灰度加残差的 F1 比同轮原灰度高 6.60 个百分点。按各场景空间块配对重采样 5,000 次，95% 区间为 [3.94，8.98] 个百分点。无注入输出在卡塔尔由 15 减至 3，澳大利亚由 51 减至 8，丹佛由 124 减至 25。两组命中的 5 级阴影是同一个卡塔尔样本。三条新分支均未达到增加弱阴影命中、控制无注入输出和维持总体 F1 的联合判据。
+
+对第二轮的 216 个弱目标做真值辅助候选审计。允许使用去重前每窗 1,024 个密集格点，原灰度与原灰度加残差分别最多覆盖 90 和 79 个。NMS 后两组均只覆盖 49 个，冻结输出各命中 1 个。候选覆盖和最终筛选都存在损失。以上分数衡量既定背景上的注入目标。
+
+运行目录为 `runs/snl-causal-study/external-sar/injected-weak-cues` 和 `injected-weak-raw-residual`。两个目录保存权重、冻结点及逐样本结果。候选审计在第二个目录使用 `--audit-dense` 复算。重跑本节依赖上一节的鹿特丹单背景模型与校准归档。
+
+```powershell
+$weakReplay = 'runs\snl-causal-study\external-sar\weak-replay'
+& $studyPy deliverables\snl-causal-study\snl_external_weak_cues.py --output "$weakReplay\local" --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_external_weak_cues.py --retain-raw --output "$weakReplay\raw-residual" --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_external_weak_cues.py --audit-dense --output "$weakReplay\raw-residual" --ffmpeg $f
+```
+
+## 弱阴影训练配比与等预算候选
+
+固定上一轮原灰度加残差结构，保留 480 个鹿特丹训练样本的数量、注入框、随机初始化及 12 轮预算。按固定种子选出 80 个 15 级样本，仅将名义暗化改为 7 级。已核对其余 400 个样本逐像素相同，80 个编辑样本在目标框内的暗化中位数从 15 降至 7 级。用鹿特丹空间隔离区选择阈值，两组校准的无注入输出上限均为零。
+
+复核用新种子和窗口，包含卡塔尔、澳大利亚、丹佛和此前未用过的墨西哥城采集。每个场景有 72 个弱注入、72 个强注入和 72 个无注入窗口。弱、强分别为名义 5、15 级。各自校准阈值为 0.50 和 0.55，弱命中从 2/288 降为 1/288，无注入窗口输出从 44 增至 60，总体 F1 从 8.89% 降至 5.87%。强阴影命中从 31 降至 22，召回差为 −3.13 个百分点，按场景内空间块配对重采样的 95% 区间为 [−7.99，+0.70] 个百分点。固定共同阈值 0.50 时弱命中仍为 2 和 1，总体 F1 为 8.89% 和 6.53%。[墨西哥城官方数据项](https://iceye-open-data-catalog.s3.us-west-2.amazonaws.com/stac-items/2026/03/ICEYE_9G3MZC_20260317T141841Z_9307864_X49_SLEDF.json)
+
+固定平衡训练组权重，在同一批四场景样本上做等候选预算诊断。比较全图按分数取前 1,024 格点、4×4 分块各留 64 点、8×8 分块各留 16 点。各块均使用解码底分 0.005，剩余名额由全图按高分回填。鹿特丹选中 4×4。四场景上，两组实际均在每个窗口生成 1,024 个候选。全局与分块的弱阴影几何覆盖分别为去重前 83 和 80，去重后 45 和 43。冻结阈值下，两组逐样本 IoU 匹配计数相同，弱阴影均命中 2 个，总体 F1 均为 8.89%。
+
+同一模型的全格点审计按 IoU ≥0.50 计算。暂时忽略分数时，288 个弱阴影中有 208 个至少有一个可匹配格点。恢复 0.005 底分后剩 169 个，取全局前 1,024 后剩 83 个，NMS 后剩 45 个，冻结阈值最终保留 2 个。前四项由真值辅助计算，描述各阶段的候选损失。
+
+两个运行目录为 `runs/snl-causal-study/external-sar/injected-weak-curriculum` 和 `injected-weak-spatial-quota`。完整权重哈希、改动样本、冻结点、逐样本匹配及几何审计均保存在相应目录。复现依赖上一节的原灰度加残差归档与墨西哥城官方 MP4。
+
+```powershell
+$weakFollowup = 'runs\snl-causal-study\external-sar\weak-followup-replay'
+$curriculumRun = "$weakFollowup\curriculum"
+$quotaRun = "$weakFollowup\quota"
+& $studyPy deliverables\snl-causal-study\snl_external_weak_curriculum.py --output $curriculumRun --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_external_candidate_quota.py --cases-run $curriculumRun --output $quotaRun --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_external_candidate_quota.py --cases-run $curriculumRun --output $quotaRun --audit-heatmap --ffmpeg $f
+```
+
+## 全格点弱阴影重排
+
+冻结原灰度加因果残差模型的权重与框坐标，取消 0.005 解码底分，每个窗口固定保留 1,024 个格点框。三组分别按原热图、热图与框几何树、加入框内外灰度与因果历史特征的树排序。两棵树用相同的训练格点、样本权重和 120 轮训练预算，同分时依次使用原热图和格点顺序。两树只在利马卡亚俄的独立 ICEYE 背景上拟合，192 个窗口共生成 576 个样本。训练抽样包含 1,251 个 IoU ≥ 0.50 的正格点，其中 236 个低于旧底分。[利马官方数据项](https://iceye-open-data-catalog.s3.amazonaws.com/stac-items/2025/05/ICEYE_6MC5KR_20250526T033241Z_4770346_X31_SLEDF.json)
+
+在鹿特丹空间隔离区的 72 个样本上选择阈值，约束 24 个无注入窗口零输出。原热图、热图与几何树、因果特征树的冻结阈值分别为 0.50、0.85、0.95，使用相同的 0.35 NMS。冻结后用已参加过前轮研究的卡塔尔、澳大利亚、丹佛和墨西哥城视频，重新抽取窗口、时刻和注入位置。每组共 864 个样本，包含 288 个 5 级弱阴影、288 个 15 级阴影和 288 个无注入窗口。雷达背景中的原有目标没有逐帧真值。
+
+| 排序方法 | 弱阴影覆盖／288，NMS 前 | 弱阴影覆盖／288，NMS 后 | 弱阴影最终命中／288 | 无注入窗口输出 | 总体注入 F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 原热图 | 88 | 53 | 1 | 38 | 11.48% |
+| 热图与框几何树 | 100 | 60 | 1 | 16 | 7.67% |
+| 加入因果特征的树 | 105 | 58 | 0 | 10 | 0.99% |
+
+两组树均减少无注入窗口的框数，却未提高最终弱阴影命中。总体命中分别为 42、25、3 个，其中强阴影为 41、24、3 个。原热图和几何树各命中的一个弱阴影来自卡塔尔的不同窗口。前两列使用真值核查候选几何覆盖，最终命中使用冻结阈值。该实验验证了注入框上的候选损失，真实阴影的跨场景准确率和召回率仍待用独立标注测量。[冻结操作点](../../runs/snl-causal-study/external-sar/injected-weak-grid-ranking/frozen-selection.json) · [逐场景及汇总结果](../../runs/snl-causal-study/external-sar/injected-weak-grid-ranking/comparison.json)
+
+逐窗口独立复算后，在每个场景的 9 个空间窗内按窗配对重采样 10,000 次，保留每窗全部时刻与注入深度，种子为 498。相对原热图，几何树和因果特征树的 NMS 前弱覆盖分别增 4.17 和 5.90 个百分点，95% 区间为 [0.35，7.99] 和 [1.04，11.11] 个百分点。总体 F1 分别降 3.81 和 10.49 个百分点，95% 区间为 [−6.29，−1.39] 和 [−12.98，−8.08] 个百分点。区间反映这四个固定背景中的窗口变动。[逐窗口计数](../../runs/snl-causal-study/external-sar/injected-weak-grid-ranking/case-rows.csv) · [候选覆盖表](../../runs/snl-causal-study/external-sar/injected-weak-grid-ranking/candidate-rows.csv)
+
+运行目录 `runs/snl-causal-study/external-sar/injected-weak-grid-ranking` 另含两棵树的权重、逐窗口匹配和弱阴影候选覆盖表。重跑需上一轮归档及利马官方 MP4 和 STAC JSON，使用安装 LightGBM 的研究环境。
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_external_grid_ranking.py --output 'runs\snl-causal-study\external-sar\grid-ranking-replay' --ffmpeg $f
+```
+
+## 同格点背景负例对照
+
+在同一批利马背景窗分别生成无注入、5 级和 15 级图像。每个版本独立通过冻结检测器。对注入后可匹配真值的格点，在相同窗口的无注入版本取同一格点，形成配对负例。对照组从同一无注入窗口选取热图分最接近、离注入中心至少 32 像素且与注入框 IoU 小于 0.10 的格点。两组共享 289,513 行基础样本，其中 1,251 行是正例。各组替换 836 行额外负例，弱、强阴影分别贡献 468、368 行，跨剂量重复格点去除 415 个。两组特征、样本权重、训练轮数、1,024 个候选预算与 NMS 相同。
+
+鹿特丹右侧区域校准上限为 24 个无注入窗口零输出。先冻结原热图、对照组和同格点组的阈值 0.50、0.95、0.90，再读取测试视频。预先选定普卡尔帕和苏格兰南部两项新 ICEYE 采集作为主要复核，每项验证 72 个弱阴影、72 个强阴影、72 个无注入控制窗。旧四景换种子和窗口做补充复核。等输出对照固定同窗预测数量，诊断候选顺序的贡献。逐格点响应另按相同格点计算注入前后分数变化。[普卡尔帕官方数据项](https://iceye-open-data-catalog.s3.us-west-2.amazonaws.com/stac-items/2026/03/ICEYE_6QE022_20260331T033546Z_9417828_X44_SLEDF.json) · [苏格兰南部官方数据项](https://iceye-open-data-catalog.s3.us-west-2.amazonaws.com/stac-items/2026/03/ICEYE_GCVEE1_20260318T213827Z_9335125_X61_SLEDF.json)
+
+| 新两场排序 | 弱阴影最终命中／144 | 强阴影最终命中／144 | 无注入窗输出 | 总体 F1 | 同窗等输出 F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 原热图 | 2 | 57 | 19 | 29.14% | 29.14% |
+| 近热图分的异位置背景对照 | 0 | 21 | 3 | 13.08% | 20.74% |
+| 同格点背景配对 | 0 | 45 | 29 | 20.64% | 21.23% |
+
+同窗等输出时，两树的弱阴影命中仍为零，强阴影分别命中 42、43 个。按场景内空间窗配对重采样 10,000 次，同格点组相对异位置对照的等输出 F1 差为 +0.49 个百分点，95% 区间为 [−2.05，+3.13] 个百分点，种子 498。两处新景共 376 个弱阴影匹配格点能配到无注入格点，原热图、异位置对照、同格点组分别有 319、284、291 个格点注入后涨分。补充四景中同格点组仅命中 1/288 个弱阴影，在无注入窗输出 1,685 个框，其中 1,620 个来自丹佛。两树都未通过弱阴影检出、无注入输出和总体 F1 的联合判据。
+
+归档保存在下列目录，包含两种训练权重及哈希、冻结点、逐窗口匹配和等输出结果。复跑所需 MP4 和 STAC JSON 可由上方官方数据项取得。评测只使用注入阴影真值，真实阴影泛化仍需在独立标注上验证。[六场结果](../../runs/snl-causal-study/external-sar/injected-weak-grid-paired/comparison.json) · [等输出逐窗口结果](../../runs/snl-causal-study/external-sar/injected-weak-grid-paired/equal-output-rows.csv)
+
+```powershell
+$iceyeRoot = 'runs\snl-causal-study\external-sar\iceye-open'
+$peruVideo = Join-Path $iceyeRoot 'ICEYE_6QE022_20260331T033546Z_9417828_X44_SLEDF_VID.mp4'
+$scotlandVideo = Join-Path $iceyeRoot 'ICEYE_GCVEE1_20260318T213827Z_9335125_X61_SLEDF_VID.mp4'
+& $studyPy deliverables\snl-causal-study\snl_external_grid_ranking.py --paired-negatives --fresh-video $peruVideo --fresh-video $scotlandVideo --output 'runs\snl-causal-study\external-sar\grid-paired-replay' --ffmpeg $f
+```

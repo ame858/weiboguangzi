@@ -295,15 +295,21 @@ def decode_center_map(model, output, h, w):
     strength, index = score.topk(min(dense_limit or 256, len(score)))
     valid = strength >= 0.005
     strength, index = strength[valid], index[valid]
-    y, x = torch.div(index, heat.shape[1], rounding_mode="floor"), index % heat.shape[1]
+    boxes = center_boxes_at(model, output, index, h, w)
+    valid = (boxes[:, 2:] > boxes[:, :2]).all(dim=1)
+    return boxes[valid].cpu().numpy(), strength[valid].cpu().numpy()
+
+
+def center_boxes_at(model, output, index, h, w):
+    columns = output.shape[-1]
+    y, x = torch.div(index, columns, rounding_mode="floor"), index % columns
     delta = model.center_offsets(output[1:3, y, x].T)
     center = STRIDE * (torch.stack((x, y), dim=1) + delta)
     half = output[3:5, y, x].T.clamp(0, 4.6).exp() / 2
     boxes = torch.cat((center - half, center + half), dim=1)
     boxes[:, 0::2].clamp_(0, w)
     boxes[:, 1::2].clamp_(0, h)
-    valid = (boxes[:, 2:] > boxes[:, :2]).all(dim=1)
-    return boxes[valid].cpu().numpy(), strength[valid].cpu().numpy()
+    return boxes
 
 
 def make_targets(targets, height, width, dense_offsets=False, soft_heat=False):
