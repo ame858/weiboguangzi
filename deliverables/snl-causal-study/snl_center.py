@@ -6,6 +6,7 @@ from torch.nn import functional as F
 
 from snl_detector import TILE, backend, detector_batch, draw_windows, tile_origins, training_tiles
 from snl_inputs import sha_file
+from snl_backbones import BACKBONES, PretrainedFPNBackbone
 
 ARCHITECTURE = "radar-center"
 STRIDE = 2
@@ -111,7 +112,7 @@ class LineContext(nn.Module):
 class CenterDetector(nn.Module):
     def __init__(self, dense_offsets=False, input_channels=3, global_context=False, learned_background=False,
                  space_to_depth=False, shared_temporal=False, line_context=False, recurrent_temporal=False,
-                 mixed_temporal=False, task_alignment=False):
+                 mixed_temporal=False, task_alignment=False, backbone="tiny", pretrained_backbone=False):
         super().__init__()
         self.dense_offsets = dense_offsets
         self.task_alignment = task_alignment
@@ -138,23 +139,31 @@ class CenterDetector(nn.Module):
         if self.temporal_encoder is not None:
             input_channels += 8
         self.space_to_depth = space_to_depth
-        self.fine = nn.Sequential(convolution(input_channels+1, 24), downsample(24, 32, space_to_depth),
-                                  convolution(32, 32))
-        self.medium = nn.Sequential(downsample(32, 48, space_to_depth), convolution(48, 48))
-        self.line_context = LineContext() if line_context else None
-        self.coarse = nn.Sequential(downsample(48, 64, space_to_depth), convolution(64, 64))
-        self.context = nn.MultiheadAttention(64, 4, batch_first=True) if global_context else None
-        if global_context:
-            self.context_norm = nn.LayerNorm(64)
-        self.fuse_medium = convolution(112, 48)
-        self.fuse_fine = nn.Sequential(convolution(80, 48), convolution(48, 32))
+        if backbone not in BACKBONES:
+            raise ValueError(f"Unsupported backbone: {backbone}")
+        self.backbone = backbone
+        if backbone == "tiny":
+            self.fine = nn.Sequential(convolution(input_channels+1, 24), downsample(24, 32, space_to_depth),
+                                      convolution(32, 32))
+            self.medium = nn.Sequential(downsample(32, 48, space_to_depth), convolution(48, 48))
+            self.line_context = LineContext() if line_context else None
+            self.coarse = nn.Sequential(downsample(48, 64, space_to_depth), convolution(64, 64))
+            self.context = nn.MultiheadAttention(64, 4, batch_first=True) if global_context else None
+            if global_context:
+                self.context_norm = nn.LayerNorm(64)
+            self.fuse_medium = convolution(112, 48)
+            self.fuse_fine = nn.Sequential(convolution(80, 48), convolution(48, 32))
+            self.backbone_net = None
+        else:
+            self.backbone_net = PretrainedFPNBackbone(backbone, input_channels + 1, pretrained=pretrained_backbone, line_context=LineContext() if line_context else None)
+            self.fine = self.medium = self.line_context = self.coarse = self.context = self.fuse_medium = self.fuse_fine = None
         self.head = nn.Conv2d(32, 6, 1)
         with torch.no_grad():
             self.head.bias[0] = -4.0
             self.head.bias[3:5] = torch.tensor([2.0, 2.6])
 
     def forward(self, features):
-        if self.space_to_depth:
+        if self.space_to_depth and self.backbone == "tiny":
             height, width = features.shape[-2:]
             features = F.pad(features, (0, -width % 8, 0, -height % 8), mode="replicate")
         if self.background is not None:
@@ -166,7 +175,10 @@ class CenterDetector(nn.Module):
         gray = features[:, :1]
         inner = F.avg_pool2d(gray, 3, 1, padding=1, count_include_pad=False)
         outer = F.avg_pool2d(gray, 11, 1, padding=5, count_include_pad=False)
-        fine = self.fine(torch.cat((features, 4 * (outer-inner)), dim=1))
+        enriched = torch.cat((features, 4 * (outer-inner)), dim=1)
+        if self.backbone_net is not None:
+            return self.head(self.backbone_net(enriched))
+        fine = self.fine(enriched)
         medium = self.medium(fine)
         if self.line_context is not None:
             medium = self.line_context(medium)
@@ -197,9 +209,9 @@ class CenterDetector(nn.Module):
 
 
 class CenterMapEnsemble(nn.Module):
-    def __init__(self, members, input_channels):
+    def __init__(self, members, input_channels, backbone="tiny"):
         super().__init__()
-        self.models = nn.ModuleList(CenterDetector(input_channels=input_channels) for _ in range(members))
+        self.models = nn.ModuleList(CenterDetector(input_channels=input_channels, backbone=backbone) for _ in range(members))
 
     def forward(self, frames):
         return fuse_center_maps([model(frames) for model in self.models])
@@ -451,7 +463,7 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                  quality_focal=False, rebalance_targets=False, box_projection=False, local_gain_augment=False,
                  seed=1729, pretrained=None, pretraining_epochs=None, recurrent_temporal=False,
                  mixed_temporal=False, rank_peaks=False, task_alignment=False, hard_tiles=(),
-                 nwd_scale=None, epoch_budget=None):
+                 nwd_scale=None, epoch_budget=None, backbone="tiny", pretrained_backbone=True):
     if initial and pretrained:
         raise ValueError("Choose one initialization checkpoint")
     if nwd_scale is not None and (not np.isfinite(nwd_scale) or nwd_scale <= 0 or not dense_offsets or task_alignment):
@@ -472,7 +484,7 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                            learned_background=learned_background, space_to_depth=space_to_depth,
                            shared_temporal=shared_temporal, line_context=line_context,
                            recurrent_temporal=recurrent_temporal, mixed_temporal=mixed_temporal,
-                           task_alignment=task_alignment).to(device)
+                           task_alignment=task_alignment, backbone=backbone, pretrained_backbone=pretrained_backbone and not (initial or pretrained)).to(device)
     if background is not None:
         model.background.load_state_dict(background.state_dict())
     epochs, learning_rate, checkpoint_interval = epoch_budget or EPOCHS, 0.001, 12
@@ -493,8 +505,15 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
         cutoff = max(labels) - 94
         labels = {index: boxes for index, boxes in labels.items() if index >= cutoff or index % 7 == 0}
         epochs, learning_rate, checkpoint_interval = 24, 0.00025, 6
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0001)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs, eta_min=0.1*learning_rate)
+    if backbone != "tiny" and pretrained_backbone and not (initial or pretrained):
+        encoder_params = list(model.backbone_net.encoder.parameters())
+        encoder_ids = {id(p) for p in encoder_params}
+        other_params = [p for p in model.parameters() if id(p) not in encoder_ids]
+        optimizer = torch.optim.AdamW([{"params": encoder_params, "lr": 0.2 * learning_rate}, {"params": other_params, "lr": learning_rate}], weight_decay=0.0001)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs, eta_min=0.02 * learning_rate)
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0001)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs, eta_min=0.1*learning_rate)
     ids, (_, _, height, width) = tuple(sorted(labels)), features.shape
     tile_transform = None
     object_weights = {}
@@ -558,6 +577,8 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
         tag += "-motion"
     if seed != 1729:
         tag += f"-seed{seed}"
+    if backbone != "tiny":
+        tag += f"-{backbone}"
     for epoch in range(1, epochs + 1):
         records = training_tiles(ids, labels, width, height, rng, epoch, hard_tiles, object_weights=object_weights)
         for i in ids:
@@ -607,7 +628,9 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                    "initial_sha256": initial["sha256"] if initial else None,
                    "training_label_frames": len(labels), "stabilized_training_labels": stabilized_labels,
                    "soft_label_heatmap": soft_heat, "input_channels": channels}
-            if pretrained:
+        if backbone != "tiny":
+           config["backbone"] = backbone
+        if pretrained:
                 config["pretrained_sha256"] = pretrained["sha256"]
             if hard_tiles:
                 config["extra_training_tiles"] = len(hard_tiles)
