@@ -798,6 +798,30 @@ function bind() {
   });
   $("btnReloadRuns").addEventListener("click", () => reloadSequences(true));
 
+  const pick = async (kind, btn) => {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "打开窗口中…";
+    try {
+      const { path } = await apiJson(`/api/dialog/${kind}`, { method: "POST" });
+      if (path) {
+        // A picked frames.npy lives inside the sequence folder.
+        const target = path.toLowerCase().endsWith(".npy") ? path.replace(/[\\/][^\\/]+$/, "") : path;
+        $("seqPath").value = target;
+        const opt = [...$("seqSelect").options].find((o) => o.value === target);
+        if (opt) $("seqSelect").value = target;
+        await loadSequence(target);
+      }
+    } catch (err) {
+      setBadge($("runBadge"), err.message, "err");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
+  $("btnPickFolder").addEventListener("click", (ev) => pick("folder", ev.currentTarget));
+  $("btnPickFile").addEventListener("click", (ev) => pick("file", ev.currentTarget));
+
   $("videoFile").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;

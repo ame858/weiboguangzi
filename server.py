@@ -16,6 +16,7 @@ import io
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -1002,6 +1003,61 @@ def api_job_detect(req: DetectJobRequest):
     job_id = _start_grouped_job(groups, collect)
     return JSONResponse({"job_id": job_id, "methods": methods})
 
+
+
+_DIALOG_LOCK = threading.Lock()
+_DIALOG_SCRIPT = """
+import os, tkinter as tk
+from tkinter import filedialog
+
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+kind = os.environ.get("DIALOG_KIND", "folder")
+title = os.environ.get("DIALOG_TITLE", "Select")
+initial = os.environ.get("DIALOG_INITIAL", "") or None
+if kind == "folder":
+    picked = filedialog.askdirectory(title=title, initialdir=initial, mustexist=True)
+else:
+    picked = filedialog.askopenfilename(
+        title=title,
+        initialdir=initial,
+        filetypes=[("frames.npy", "frames.npy"), ("NumPy", "*.npy"), ("All files", "*.*")],
+    )
+print(picked or "")
+root.destroy()
+"""
+
+
+@app.post("/api/dialog/{kind}")
+def api_dialog(kind: str):
+    """Open a native picker on the machine that runs the server.
+
+    The workbench is a local tool, so a real absolute path is far more useful
+    than uploading a browser FileList: detect/track keep reading frames.npy
+    from disk.
+    """
+    if kind not in ("folder", "file"):
+        raise HTTPException(status_code=404, detail="未知的选择类型")
+    if not _DIALOG_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="已有一个选择窗口在打开")
+    try:
+        env = dict(os.environ)
+        env["DIALOG_KIND"] = kind
+        env["DIALOG_TITLE"] = "选择包含 frames.npy 的目录" if kind == "folder" else "选择 frames.npy"
+        env["DIALOG_INITIAL"] = str(scan.DEFAULT_RUNS)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c", _DIALOG_SCRIPT],
+                capture_output=True, text=True, timeout=600, env=env, creationflags=flags,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise HTTPException(status_code=500, detail=f"无法打开系统对话框：{exc}")
+        lines = [line for line in (proc.stdout or "").splitlines() if line.strip()]
+        return JSONResponse({"path": lines[-1].strip() if lines else None})
+    finally:
+        _DIALOG_LOCK.release()
 
 
 def _extract_preview(video_path: Path, workspace: Path) -> dict[str, Any]:

@@ -91,6 +91,7 @@
     input:hover, select:hover { background: #e9eef6; }
     input:focus, select:focus { background: var(--surface); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(11,87,208,.12); }
 
+    .pick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .method-list { display: flex; flex-direction: column; gap: 6px; }
     .method {
       display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px;
@@ -354,9 +355,12 @@
           <button data-kind="sequence" class="on">图像序列</button>
           <button data-kind="video">实测视频</button>
         </div>
-        <div id="seqPane" style="display:flex; flex-direction:column; gap:7px;">
+        <div id="seqPane" style="display:flex; flex-direction:column; gap:8px;">
           <select id="seqSelect"></select>
-          <input type="text" id="seqPath" placeholder="或粘贴序列绝对路径，回车" />
+          <div class="pick-row">
+            <button class="btn btn-sm" id="btnPickFolder">选择文件夹</button>
+            <button class="btn btn-sm" id="btnPickFile">选择文件</button>
+          </div>
         </div>
         <div id="videoPane" class="hidden" style="display:flex; flex-direction:column; gap:7px;">
           <div class="file-box"><input type="file" id="videoFile" accept=".mp4,.mov,.avi,.mkv" /></div>
@@ -401,6 +405,9 @@
           <fieldset><span class="lbl">关联门限</span><input type="number" id="advGate" value="12" step="0.5" /></fieldset>
           <fieldset><span class="lbl">匹配 IoU</span><input type="number" id="advIou" value="0.5" step="0.05" /></fieldset>
         </div>
+        <fieldset style="margin-top:8px;"><span class="lbl">序列路径（手动输入）</span>
+          <input type="text" id="seqPath" placeholder="粘贴绝对路径，回车加载" />
+        </fieldset>
       </details>
 
       <div class="rail-foot">
