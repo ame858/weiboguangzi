@@ -590,7 +590,7 @@ function renderVideo() {
   $("videoOverlay").classList.remove("hidden");
   if (res.overlay_url) $("videoOverlay").src = `${res.overlay_url}&t=${Date.now()}`;
   const links = [];
-  if (res.overlay_download) links.push(`<a class="btn btn-sm btn-primary" href="${res.overlay_download}">下载叠加视频</a>`);
+  if (res.overlay_download) links.push(`<a class="btn btn-sm" href="${res.overlay_download}">下载叠加视频</a>`);
   if (res.csv_download) links.push(`<a class="btn btn-sm" href="${res.csv_download}">下载 predictions.csv</a>`);
   $("videoDownloads").innerHTML = links.join("");
 }
@@ -1041,14 +1041,29 @@ function bind() {
     $("quad").classList.toggle("pixelated", on);
   });
 
-  $("btnAllMetrics").addEventListener("click", () => $("metricSheet").classList.remove("hidden"));
+  $("btnAllMetrics").addEventListener("click", () => {
+    const video = $("videoOverlay");
+    if (video && !video.paused) video.pause();
+    $("metricSheet").classList.remove("hidden");
+  });
   $("btnCloseSheet").addEventListener("click", () => $("metricSheet").classList.add("hidden"));
   $("metricSheet").addEventListener("click", (ev) => {
     if (ev.target === $("metricSheet")) $("metricSheet").classList.add("hidden");
   });
 
   window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("metricSheet").classList.contains("hidden")) {
+      e.preventDefault();
+      $("btnCloseSheet").click();
+      // 焦点还给入口按钮，否则关闭后焦点掉到 body，键盘用户失去位置
+      $("btnAllMetrics").focus();
+      return;
+    }
+    // 弹层是模态的：开着时不允许空格/方向键改背后的帧
+    if (!$("metricSheet").classList.contains("hidden")) return;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+    // 焦点在按钮上时，空格是原生激活，不能被劫持成播放
+    if (e.code === "Space" && document.activeElement?.tagName === "BUTTON") return;
     if (!state.results.length) return;
     if (e.code === "Space") { e.preventDefault(); togglePlayback(); }
     else if (e.code === "ArrowLeft") { e.preventDefault(); gotoFrame(state.index - 1); }
