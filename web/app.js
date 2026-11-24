@@ -7,6 +7,8 @@ const $ = (id) => document.getElementById(id);
 
 const ICON_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 const ICON_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+const ICON_CHEVRON = '<svg class="m3-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+const ICON_CHECK = '<svg class="m3-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 
 function setPlayState(playing) {
   const icon = $("playIcon");
@@ -66,6 +68,149 @@ const state = {
   stepNo: 0,
 };
 
+/* ------------------------------------------------------------ Gemini M3 custom select */
+let activeM3Menu = null;
+let activeM3Trigger = null;
+
+function closeM3Menu(restoreFocus = false) {
+  if (activeM3Menu) {
+    activeM3Menu.remove();
+    activeM3Menu = null;
+  }
+  if (activeM3Trigger) {
+    activeM3Trigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus) activeM3Trigger.focus();
+    activeM3Trigger = null;
+  }
+}
+
+function syncM3Select(sel) {
+  if (!sel || !sel._m3Wrap) return;
+  const wrap = sel._m3Wrap;
+  const label = sel._m3Label;
+  wrap.classList.toggle("hidden", sel.classList.contains("hidden"));
+  const opt = sel.options[sel.selectedIndex] || sel.options[0];
+  label.textContent = opt ? opt.textContent : "—";
+  if (sel._m3Trigger) {
+    sel._m3Trigger.title = opt ? (opt.title || opt.textContent) : "";
+    sel._m3Trigger.disabled = sel.disabled;
+  }
+}
+
+function openM3Menu(sel) {
+  const trigger = sel._m3Trigger;
+  if (!trigger) return;
+  const isSame = activeM3Trigger === trigger;
+  closeM3Menu(false);
+  if (isSame) return;
+
+  const menu = document.createElement("div");
+  menu.className = "m3-menu";
+  menu.setAttribute("role", "listbox");
+
+  [...sel.options].forEach((opt) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "m3-menu-item";
+    item.setAttribute("role", "option");
+    const selected = opt.value === sel.value;
+    if (selected) {
+      item.classList.add("is-selected");
+      item.setAttribute("aria-selected", "true");
+    }
+    item.innerHTML = `<span class="m3-menu-item-text">${esc(opt.textContent)}</span>${selected ? ICON_CHECK : ""}`;
+    if (opt.title) item.title = opt.title;
+    item.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const changed = sel.value !== opt.value;
+      sel.value = opt.value;
+      syncM3Select(sel);
+      closeM3Menu(true);
+      if (changed) sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  activeM3Menu = menu;
+  activeM3Trigger = trigger;
+  trigger.setAttribute("aria-expanded", "true");
+
+  // 视口自适应定位：贴紧触发器，靠近底部自动向上翻，靠近右侧自动右对齐
+  const rect = trigger.getBoundingClientRect();
+  const minW = Math.max(rect.width, 148);
+  menu.style.minWidth = `${Math.min(minW, 300)}px`;
+  const mRect = menu.getBoundingClientRect();
+  const pad = 10;
+
+  let left = rect.left;
+  if (left + mRect.width > window.innerWidth - pad) {
+    left = Math.max(pad, rect.right - mRect.width);
+  }
+  let top = rect.bottom + 6;
+  if (top + mRect.height > window.innerHeight - pad && rect.top - 6 - mRect.height > pad) {
+    top = rect.top - 6 - mRect.height;
+    menu.classList.add("flip-up");
+  }
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+
+  const selectedItem = menu.querySelector(".is-selected");
+  if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" });
+}
+
+function upgradeSelect(sel) {
+  if (!sel || sel._m3Wrap) {
+    if (sel) syncM3Select(sel);
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "m3-select";
+  if (sel.style.maxWidth) wrap.style.maxWidth = sel.style.maxWidth;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "m3-select-trigger";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  if (sel.getAttribute("aria-label")) {
+    trigger.setAttribute("aria-label", sel.getAttribute("aria-label"));
+  }
+
+  const label = document.createElement("span");
+  label.className = "m3-select-label";
+  trigger.appendChild(label);
+  trigger.insertAdjacentHTML("beforeend", ICON_CHEVRON);
+
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  wrap.appendChild(trigger);
+  sel.classList.add("native-select-hidden");
+
+  sel._m3Wrap = wrap;
+  sel._m3Trigger = trigger;
+  sel._m3Label = label;
+
+  trigger.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openM3Menu(sel);
+  });
+
+  sel.addEventListener("change", () => syncM3Select(sel));
+
+  const obs = new MutationObserver(() => syncM3Select(sel));
+  obs.observe(sel, { childList: true, attributes: true, attributeFilter: ["class", "disabled"] });
+
+  syncM3Select(sel);
+}
+
+function upgradeAllSelects(root = document) {
+  root.querySelectorAll("select").forEach((sel) => {
+    if (sel.closest(".col-empty")) return;
+    upgradeSelect(sel);
+  });
+}
+
 /* ------------------------------------------------------------ utilities */
 async function apiJson(url, options = {}) {
   const resp = await fetch(url, options);
@@ -114,6 +259,22 @@ function setBadge(el, text, level = "") {
   el.className = `badge ${level}`.trim();
 }
 
+function closeSlotMenus() {
+  document.querySelectorAll("#columns .slot-menu").forEach((m) => m.remove());
+  document.querySelectorAll("#columns .col-empty.menu-open").forEach((c) => c.classList.remove("menu-open"));
+}
+
+function selectSlotValue(slot, value) {
+  if (value >= 0) {
+    // Picking a result that already occupies another column swaps the two,
+    // so a comparison never shows the same model twice.
+    const other = state.slots.indexOf(value);
+    if (other >= 0 && other !== slot) state.slots[other] = state.slots[slot];
+  }
+  state.slots[slot] = value;
+  render();
+}
+
 /* ------------------------------------------------------------ context */
 function updateCtx() {
   const parts = [];
@@ -157,6 +318,8 @@ async function boot() {
     opt.textContent = cmap;
     $("dispCmap").appendChild(opt);
   }
+  syncM3Select($("dispMode"));
+  syncM3Select($("dispCmap"));
   $("modelPath").value = data.defaults.unet_model || "";
   await reloadSequences();
 }
@@ -174,12 +337,14 @@ async function reloadSequences(refresh = false) {
     sel.appendChild(opt);
   }
   if (!seqs.sequences.length) {
+    syncM3Select(sel);
     $("stageEmpty").classList.remove("hidden");
     $("stageEmpty").textContent = "runs/ 下没有找到 frames.npy，请检查目录或在左侧粘贴路径。";
     return;
   }
   const preferred = seqs.sequences.find((s) => s.label.includes("结题演示·优先")) || seqs.sequences[0];
   sel.value = preferred.path;
+  syncM3Select(sel);
   await loadSequence(preferred.path);
 }
 
@@ -246,6 +411,7 @@ async function refreshMeta() {
 
 /* ------------------------------------------------------------ render */
 async function render() {
+  closeM3Menu(false);
   if (state.kind === "video") {
     renderVideo();
     return;
@@ -296,6 +462,46 @@ function slotOptions(current) {
   return `<option value="-1"${empty}>（空位）</option>${list}`;
 }
 
+function openSlotMenu(colEl, slot) {
+  const wasOpen = colEl.classList.contains("menu-open");
+  closeSlotMenus();
+  closeM3Menu(false);
+  if (wasOpen) return;
+
+  colEl.classList.add("menu-open");
+  const menu = document.createElement("div");
+  menu.className = "slot-menu";
+  menu.setAttribute("role", "menu");
+
+  const title = document.createElement("div");
+  title.className = "slot-menu-title";
+  title.textContent = "选择对比结果";
+  menu.appendChild(title);
+
+  state.results.forEach((r, idx) => {
+    const usedIn = state.slots.indexOf(idx);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "slot-menu-item";
+    btn.innerHTML = `<span>${esc(labelOf(r))}</span>${usedIn >= 0 ? `<span class="tag">槽位 ${usedIn + 1}</span>` : ""}`;
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeSlotMenus();
+      selectSlotValue(slot, idx);
+    });
+    menu.appendChild(btn);
+  });
+
+  if (state.results.length <= 1) {
+    const hint = document.createElement("div");
+    hint.className = "slot-menu-hint";
+    hint.textContent = "在左侧勾选更多模型并点击「运行检测」，即可展开多列并排对比。";
+    menu.appendChild(hint);
+  }
+
+  colEl.appendChild(menu);
+}
+
 async function renderColumns() {
   const filled = state.slots
     .map((idx, slot) => ({ slot, idx }))
@@ -343,9 +549,9 @@ async function renderColumns() {
       </div>`;
     if (!side) {
       cells.push(`
-        <div class="col col-empty" title="点击选择已有结果，或在左侧勾选更多模型后运行">
+        <div class="col col-empty" data-slot="${slot}" title="点击添加对比结果">
           ${head}
-          <button class="slot-empty" data-slot="${slot}" type="button" tabindex="-1">
+          <button class="slot-empty" data-slot="${slot}" type="button">
             <span class="slot-plus" aria-hidden="true">+</span>
             <span class="slot-label">添加对比</span>
             <span class="slot-sub">选择已有结果，或在左侧勾选模型运行</span>
@@ -371,25 +577,18 @@ async function renderColumns() {
   for (const sel of document.querySelectorAll("#columns .slotPick")) {
     sel.addEventListener("change", (ev) => {
       ev.stopPropagation();
-      const slot = Number(ev.target.dataset.slot);
-      const value = Number(ev.target.value);
-      if (value >= 0) {
-        // Picking a result that already occupies another column swaps the two,
-        // so a comparison never shows the same model twice.
-        const other = state.slots.indexOf(value);
-        if (other >= 0 && other !== slot) state.slots[other] = state.slots[slot];
-      }
-      state.slots[slot] = value;
-      render();
+      selectSlotValue(Number(ev.target.dataset.slot), Number(ev.target.value));
     });
     sel.addEventListener("click", (ev) => ev.stopPropagation());
   }
+  upgradeAllSelects($("columns"));
+
   for (const box of document.querySelectorAll("#columns .slot-empty")) {
-    box.addEventListener("click", () => {
+    box.addEventListener("click", (ev) => {
+      ev.stopPropagation();
       const slot = Number(box.dataset.slot);
-      const sel = document.querySelector(`#columns .slotPick[data-slot="${slot}"]`);
-      if (sel?.showPicker) sel.showPicker();
-      else sel?.focus();
+      const colEl = box.closest(".col-empty");
+      if (colEl) openSlotMenu(colEl, slot);
     });
   }
 
@@ -534,6 +733,7 @@ async function renderQuad() {
     .map((slotIdx, i) => `<option value="${i}"${i === state.quadSlot ? " selected" : ""}>${esc(labelOf(state.results[slotIdx]))}</option>`)
     .join("");
   sel.classList.toggle("hidden", state.slots.length < 2);
+  syncM3Select(sel);
   if (state.sides.length) renderPills(state.sides);
 }
 
@@ -649,8 +849,9 @@ function resetSteps() {
   $("logWrap").classList.remove("hidden", "collapsed");
   $("log").classList.add("hidden");
   $("log").textContent = "";
+  $("btnRawLog").textContent = "原始日志";
   $("steps").innerHTML = "";
-  $("runDots").classList.remove("done");
+  $("runDots").classList.remove("done", "err");
   $("runTitle").textContent = "正在运行…";
   state.stepNo = 0;
 }
@@ -658,7 +859,6 @@ function resetSteps() {
 function addStep(text, cls = "") {
   const host = $("steps");
   const prev = host.lastElementChild;
-  // 新一步出现时，上一步转为"已完成"的灰字，跟录屏里的节奏一致
   if (prev && !prev.classList.contains("group")) prev.classList.add("done");
   const el = document.createElement("div");
   el.className = `step ${cls}`.trim();
@@ -712,16 +912,18 @@ function streamJob(jobId, onDone) {
     es.close();
     const { ok, result } = JSON.parse(ev.data);
     setBadge($("runBadge"), ok ? "已完成" : "执行失败", ok ? "ok" : "err");
-    $("runDots").classList.add("done");
-    $("runTitle").textContent = ok ? "已完成" : "执行失败";
+    $("runDots").classList.add(ok ? "done" : "err");
+    const countText = state.stepNo ? ` · ${state.stepNo} 步` : "";
+    $("runTitle").textContent = ok ? `已完成${countText}` : "执行失败";
     $("steps").querySelectorAll(".step").forEach((el) => el.classList.add("done"));
-    // 跑完收起成一行，把画布高度还给结果
-    setTimeout(() => $("logWrap").classList.add("collapsed"), 1400);
+    // 跑完自动收成右下角小胶囊，失败时保留展开方便查看原因
+    if (ok) setTimeout(() => $("logWrap").classList.add("collapsed"), 1400);
     onDone(ok, result);
   });
   es.onerror = () => {
     es.close();
     setBadge($("runBadge"), "连接中断", "err");
+    $("runDots").classList.add("err");
     $("runTitle").textContent = "连接中断";
   };
 }
@@ -771,8 +973,11 @@ async function runDetection() {
   } catch (err) {
     $("btnRun").disabled = false;
     setBadge($("runBadge"), "启动失败", "err");
-    $("logWrap").classList.remove("hidden");
+    $("logWrap").classList.remove("hidden", "collapsed");
+    $("runDots").classList.add("err");
+    $("runTitle").textContent = "启动失败";
     $("log").classList.remove("hidden");
+    $("btnRawLog").textContent = "隐藏日志";
     $("log").textContent = err.message;
   }
 }
@@ -805,8 +1010,11 @@ async function runVideoDetection() {
   } catch (err) {
     $("btnRun").disabled = false;
     setBadge($("runBadge"), "启动失败", "err");
-    $("logWrap").classList.remove("hidden");
+    $("logWrap").classList.remove("hidden", "collapsed");
+    $("runDots").classList.add("err");
+    $("runTitle").textContent = "启动失败";
     $("log").classList.remove("hidden");
+    $("btnRawLog").textContent = "隐藏日志";
     $("log").textContent = err.message;
   }
 }
@@ -884,6 +1092,8 @@ function canvasPoint(ev) {
 
 /* ------------------------------------------------------------ events */
 function bind() {
+  upgradeAllSelects(document);
+
   $("kindSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-kind]");
     if (btn) setKind(btn.dataset.kind);
@@ -906,7 +1116,10 @@ function bind() {
         const target = path.toLowerCase().endsWith(".npy") ? path.replace(/[\\/][^\\/]+$/, "") : path;
         $("seqPath").value = target;
         const opt = [...$("seqSelect").options].find((o) => o.value === target);
-        if (opt) $("seqSelect").value = target;
+        if (opt) {
+          $("seqSelect").value = target;
+          syncM3Select($("seqSelect"));
+        }
         await loadSequence(target);
       }
     } catch (err) {
@@ -922,6 +1135,10 @@ function bind() {
   $("videoFile").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const nameEl = $("videoFileName");
+    const boxEl = $("videoFileBox");
+    if (nameEl) nameEl.textContent = file.name;
+    if (boxEl) boxEl.classList.add("has-file");
     const fd = new FormData();
     fd.append("file", file);
     setBadge($("runBadge"), "解码首帧", "warn");
@@ -1007,7 +1224,16 @@ function bind() {
   $("btnRawLog").addEventListener("click", (ev) => {
     ev.stopPropagation();
     $("logWrap").classList.remove("collapsed");
-    $("log").classList.toggle("hidden");
+    const isHidden = $("log").classList.toggle("hidden");
+    $("btnRawLog").textContent = isHidden ? "原始日志" : "隐藏日志";
+  });
+  $("btnToggleLog").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    $("logWrap").classList.toggle("collapsed");
+  });
+  $("btnCloseLog").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    $("logWrap").classList.add("hidden");
   });
   $("logWrap").querySelector(".run-head").addEventListener("click", () => {
     $("logWrap").classList.toggle("collapsed");
@@ -1034,11 +1260,17 @@ function bind() {
 
   $("btnDisplay").addEventListener("click", (ev) => {
     ev.stopPropagation();
+    closeM3Menu(false);
     $("displayPop").classList.toggle("hidden");
   });
   document.addEventListener("click", (ev) => {
-    if (!ev.target.closest(".pop-wrap")) $("displayPop").classList.add("hidden");
+    if (!ev.target.closest(".pop-wrap") && !ev.target.closest(".m3-menu")) $("displayPop").classList.add("hidden");
+    if (!ev.target.closest(".col-empty")) closeSlotMenus();
+    if (!ev.target.closest(".m3-select") && !ev.target.closest(".m3-menu")) closeM3Menu(false);
   });
+  window.addEventListener("resize", () => closeM3Menu(false));
+  document.querySelector(".rail-body")?.addEventListener("scroll", () => closeM3Menu(false), { passive: true });
+
   ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred"].forEach((id) => {
     $(id).addEventListener("change", () => {
       state.quadCache.clear();
@@ -1065,10 +1297,18 @@ function bind() {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("metricSheet").classList.contains("hidden")) {
-      e.preventDefault();
-      closeSheet();
-      return;
+    if (e.key === "Escape") {
+      if (activeM3Menu) {
+        e.preventDefault();
+        closeM3Menu(true);
+        return;
+      }
+      closeSlotMenus();
+      if (!$("metricSheet").classList.contains("hidden")) {
+        e.preventDefault();
+        closeSheet();
+        return;
+      }
     }
     // 弹层是模态的：开着时不允许空格/方向键改背后的帧
     if (!$("metricSheet").classList.contains("hidden")) return;
