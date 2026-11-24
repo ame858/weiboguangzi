@@ -403,7 +403,7 @@ function pillCard(label, value, delta, digits = 3) {
   let tail = "";
   if (delta !== null && delta !== undefined) {
     if (Math.abs(delta) < 1e-9) {
-      tail = `<em style="color:var(--ink-3);">±0</em>`;
+      tail = `<em style="color:var(--on-3);">±0</em>`;
     } else {
       const cls = delta > 0 ? "up" : "down";
       const arrow = delta > 0 ? "↑" : "↓";
@@ -438,7 +438,7 @@ function renderPills(sides) {
 
 function renderMetricTable(sides) {
   if (!sides.some((s) => s.summary)) {
-    $("metricTable").innerHTML = `<tr><td style="color:var(--ink-3);">暂无指标</td></tr>`;
+    $("metricTable").innerHTML = `<tr><td style="color:var(--on-3);">暂无指标</td></tr>`;
     return;
   }
   const base = sides[0]?.summary || {};

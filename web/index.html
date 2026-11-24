@@ -6,20 +6,23 @@
   <title>Ka 视频 SAR · 动目标阴影对比</title>
   <style>
     :root {
-      /* Material 3 / Gemini：surface 白、画布灰蓝、单一系统蓝 */
-      --canvas: #f0f4f9;
+      /* Gemini 语言：灰白底、白浮层、灰组件；蓝只留给一次性提示条 */
+      --canvas: #f4f5f7;
       --surface: #ffffff;
-      --field: #f0f4f9;
+      --field: #f0f1f3;
+      --field-hover: #e8eaed;
+      --pressed: #e8eaed;
       --on: #1f1f1f;
-      --on-2: #444746;
-      --on-3: #747775;
-      --outline: #c4c7c5;
-      --outline-v: #e1e3e1;
-      --primary: #0b57d0;
-      --primary-h: #0842a0;
-      --primary-c: #d3e3fd;
-      --on-primary-c: #041e49;
-      --error: #b3261e;
+      --on-2: #5f6368;
+      --on-3: #80868b;
+      --outline: #e4e6e9;
+      --outline-2: #d9dce0;
+      --cta: #2b2d31;
+      --cta-hover: #151619;
+      --ok: #1e8e3e;
+      --warn: #a86800;
+      --err: #b3261e;
+      --info: #1a73e8;   /* 仅用于提示条，不进操作区 */
       --stage: #1f1f1f;
 
       /* M3 shape scale */
@@ -32,6 +35,7 @@
 
       --shadow-1: 0 1px 2px rgba(60, 64, 67, 0.06), 0 1px 3px 1px rgba(60, 64, 67, 0.04);
       --shadow-2: 0 2px 6px rgba(60, 64, 67, 0.10), 0 8px 24px rgba(60, 64, 67, 0.07);
+      --shadow-inset: inset 0 1px 2px rgba(60, 64, 67, 0.10);
       --ease: 200ms cubic-bezier(0.2, 0, 0, 1);
 
       --sans: "Google Sans", "Product Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -46,33 +50,27 @@
       display: flex; flex-direction: column; overflow: hidden;
     }
 
-    /* ---------- top app bar: 64dp ---------- */
-    .top {
-      flex: 0 0 auto; height: 64px; display: flex; align-items: center; gap: 12px;
-      padding: 0 20px; z-index: 20;
-    }
-    .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    /* ---------- rail head：品牌与上下文并进左栏，不再有顶栏 ---------- */
+    .rail-head { display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--outline); }
+    .brand { display: flex; align-items: center; gap: 9px; }
     .brand-icon {
-      width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
-      background: var(--primary); color: #fff; flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+      background: var(--cta); color: #fff; flex-shrink: 0;
     }
-    .brand b { font-size: 15px; font-weight: 500; letter-spacing: -0.1px; }
+    .brand b { font-size: 14px; font-weight: 500; letter-spacing: -0.1px; }
     .ctx {
-      display: inline-flex; align-items: center; gap: 8px; min-width: 0; height: 32px;
-      padding: 0 14px; border-radius: var(--r-full); background: var(--surface);
-      font-size: 12.5px; color: var(--on-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: flex; align-items: center; gap: 7px; min-width: 0;
+      font-size: 11.5px; color: var(--on-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .ctx b { font-weight: 500; color: var(--on); }
-    .ctx .sep { color: var(--outline); }
-    .ctx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--outline); flex-shrink: 0; }
-    .ctx.live .ctx-dot { background: #1e8e3e; }
-    .top-spacer { flex: 1; }
-    .top .btn { background: var(--surface); box-shadow: var(--shadow-1); }
+    .ctx b { font-weight: 500; color: var(--on-2); }
+    .ctx .sep { color: var(--outline-2); }
+    .ctx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--outline-2); flex-shrink: 0; }
+    .ctx.live .ctx-dot { background: var(--ok); }
 
     /* ---------- shell ---------- */
     .app {
       flex: 1; min-height: 0; display: grid; grid-template-columns: 288px minmax(0, 1fr);
-      gap: 16px; padding: 0 20px 20px;
+      gap: 16px; padding: 16px 20px 20px;
     }
 
     /* ---------- rail: 28dp 浮层 ---------- */
@@ -94,7 +92,7 @@
       color: var(--on-2); white-space: nowrap; transition: background var(--ease), color var(--ease);
     }
     .seg button:hover { color: var(--on); }
-    .seg button.on { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-1); }
+    .seg button.on { background: var(--surface); color: var(--on); box-shadow: var(--shadow-1); }
 
     input[type="text"], input[type="number"], select {
       width: 100%; height: 40px; background: var(--field); color: var(--on);
@@ -104,7 +102,7 @@
     }
     input::placeholder { color: var(--on-3); }
     input:hover, select:hover { background: #e9eef6; }
-    input:focus, select:focus { background: var(--surface); border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+    input:focus, select:focus { background: var(--surface); border-color: var(--outline-2); box-shadow: 0 0 0 2px rgba(31, 31, 31, 0.10); }
 
     .pick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -115,13 +113,16 @@
       cursor: pointer; font-family: inherit; font-size: 13px; color: var(--on-2);
       text-align: left; transition: background var(--ease), border-color var(--ease), color var(--ease);
     }
-    .method:hover { background: #f6f9fd; }
+    .method:hover { background: var(--field); }
     .method .tick {
       width: 18px; height: 18px; border: 1.5px solid var(--outline); border-radius: var(--r-xs);
       flex-shrink: 0; display: grid; place-items: center; color: transparent;
     }
-    .method.on { background: var(--primary-c); border-color: transparent; color: var(--on-primary-c); font-weight: 500; }
-    .method.on .tick { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .method.on {
+      background: var(--pressed); border-color: transparent; color: var(--on); font-weight: 500;
+      box-shadow: var(--shadow-inset);
+    }
+    .method.on .tick { background: var(--cta); border-color: var(--cta); color: #fff; }
 
     .rail details { border-top: 1px solid var(--outline-v); padding-top: 14px; }
     .rail summary {
@@ -151,8 +152,8 @@
     }
     .btn:hover { background: #e3e9f2; color: var(--on); }
     .btn-sm { height: 34px; padding: 0 14px; font-size: 12.5px; }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-h); color: #fff; box-shadow: 0 1px 3px rgba(11, 87, 208, 0.4); }
+    .btn-primary { background: var(--cta); color: #fff; }
+    .btn-primary:hover { background: var(--cta-hover); color: #fff; }
     .btn-primary:disabled { background: var(--on-3); cursor: not-allowed; box-shadow: none; }
     .run-btn { width: 100%; height: 44px; font-size: 14px; }
 
@@ -162,12 +163,14 @@
       font-size: 11.5px; font-weight: 500; background: var(--field); color: var(--on-2);
       white-space: nowrap;
     }
-    .badge.ok { background: #e6f4ea; color: #1e8e3e; }
-    .badge.warn { background: #fef7e0; color: #a86800; }
-    .badge.err { background: #fce8e6; color: var(--error); }
+    .badge.ok { background: #e9f2ea; color: var(--ok); }
+    .badge.warn { background: #fbf3e4; color: var(--warn); }
+    .badge.err { background: #f8e9e7; color: var(--err); }
 
     /* ---------- stage ---------- */
     .stage { min-height: 0; display: flex; flex-direction: column; gap: 12px; position: relative; }
+    .stage .btn { background: var(--surface); box-shadow: var(--shadow-1); }
+    .stage .btn:hover { background: #fbfbfc; }
     .stage-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .icon-btn {
       width: 36px; height: 36px; border-radius: 50%; border: none; background: transparent;
@@ -177,11 +180,11 @@
     .icon-btn:hover { background: rgba(68, 71, 70, 0.08); color: var(--on); }
     .play-btn {
       height: 36px; padding: 0 18px 0 14px; border-radius: var(--r-full); border: none;
-      background: var(--primary); color: #fff; font-family: inherit; font-size: 13px;
+      background: var(--cta); color: #fff; font-family: inherit; font-size: 13px;
       font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
       transition: background var(--ease);
     }
-    .play-btn:hover { background: var(--primary-h); }
+    .play-btn:hover { background: var(--cta-hover); }
     .stage-bar select { width: auto; height: 36px; padding: 0 12px; border-radius: var(--r-full); background: var(--surface); }
 
     .columns {
@@ -200,7 +203,7 @@
       width: auto; max-width: 70%; height: 28px; padding: 0 4px; background: transparent;
       border: none; border-radius: var(--r-xs); font-size: 13px; font-weight: 500; color: var(--on);
     }
-    .col-head select:hover { background: var(--field); }
+    .col-head select:hover { background: var(--field); color: var(--on); }
     .col-head select:focus { background: var(--field); border-color: transparent; box-shadow: none; }
     .col-head .f1 { margin-left: auto; font-size: 12px; color: var(--on-3); font-variant-numeric: tabular-nums; }
     .col-img { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--field); margin: 10px; border-radius: var(--r-sm); overflow: hidden; }
@@ -217,7 +220,7 @@
       color: var(--on-3); font-size: 13px; padding: 20px; text-align: center;
       transition: border-color var(--ease), color var(--ease), background var(--ease);
     }
-    .slot-empty:hover { border-color: var(--primary); color: var(--primary); background: #f6f9fd; }
+    .slot-empty:hover { border-color: var(--outline-2); color: var(--on-2); background: var(--field); }
     .slot-empty span:last-child { font-size: 11.5px; line-height: 1.6; }
 
     .pixelated img { image-rendering: pixelated; }
@@ -262,8 +265,8 @@
       display: inline-flex; align-items: baseline; gap: 6px;
     }
     .pillcard b em { font-style: normal; font-size: 11px; font-weight: 500; }
-    .pillcard .up { color: #1e8e3e; }
-    .pillcard .down { color: var(--error); }
+    .pillcard .up { color: var(--ok); }
+    .pillcard .down { color: var(--err); }
 
     .strip { flex: 0 0 auto; display: flex; gap: 8px; overflow-x: auto; padding: 2px; min-height: 60px; }
     .strip button {
@@ -272,7 +275,7 @@
       transition: border-color var(--ease);
     }
     .strip button img { display: block; height: 48px; width: auto; }
-    .strip button.on { border-color: var(--primary); }
+    .strip button.on { border-color: var(--cta); }
     .strip button i {
       position: absolute; right: 0; bottom: 0; font-style: normal; font-size: 9px;
       font-family: var(--mono); color: #fff; background: rgba(31, 31, 31, 0.66); padding: 0 3px;
@@ -311,7 +314,7 @@
       border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       transition: transform var(--ease);
     }
-    .switch-row input[type="checkbox"]:checked { background: var(--primary); }
+    .switch-row input[type="checkbox"]:checked { background: var(--cta); }
     .switch-row input[type="checkbox"]:checked::after { transform: translateX(18px); }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 
@@ -329,8 +332,8 @@
     table.metrics thead th { font-size: 11.5px; color: var(--on-3); font-weight: 500; }
     table.metrics td.val { font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
     table.metrics .delta { font-size: 11px; font-weight: 400; margin-left: 5px; color: var(--on-3); }
-    table.metrics .delta.up { color: #1e8e3e; }
-    table.metrics .delta.down { color: var(--error); }
+    table.metrics .delta.up { color: var(--ok); }
+    table.metrics .delta.down { color: var(--err); }
     table.metrics .delta.flat { color: var(--on-3); }
 
     .video-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -364,8 +367,13 @@
 </style>
 </head>
 <body>
-  <header class="top">
-    <div class="brand">
+
+
+  <div class="app">
+    <!-- ============ rail ============ -->
+    <aside class="rail">
+      <div class="rail-head">
+        <div class="brand">
       <div class="brand-icon" aria-hidden="true">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <circle cx="12" cy="12" r="9" opacity=".45"></circle>
@@ -373,30 +381,11 @@
           <path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path>
         </svg>
       </div>
-      <b>Ka 视频 SAR · 阴影对比</b>
+      <b>Ka 视频 SAR</b>
     </div>
     <div class="ctx" id="ctxChip"><span class="ctx-dot"></span><span id="ctxText">未选择输入</span></div>
-    <div class="top-spacer"></div>
-    <button class="btn btn-sm" id="btnAllMetrics">全部指标</button>
-    <div class="pop-wrap">
-      <button class="btn btn-sm" id="btnDisplay">显示</button>
-      <div class="popover hidden" id="displayPop">
-        <div class="row"><span class="lbl">灰度映射</span><select id="dispMode"></select></div>
-        <div class="row"><span class="lbl">伪彩色</span><select id="dispCmap"></select></div>
-        <div class="row"><span class="lbl">差分参考</span>
-          <select id="dispDiff"><option value="median">短期历史中值</option><option value="previous">前一帧</option></select>
-        </div>
-        <label class="switch-row"><span>轻度去斑平滑</span><input type="checkbox" id="dispDenoise" /></label>
-        <label class="switch-row"><span><span class="dot" style="background:#1e8e3e"></span>真值轮廓</span><input type="checkbox" id="dispTruth" checked /></label>
-        <label class="switch-row"><span><span class="dot" style="background:#d93025"></span>预测轮廓</span><input type="checkbox" id="dispPred" checked /></label>
-        <label class="switch-row"><span>像素锐化缩放</span><input type="checkbox" id="dispPixelated" checked /></label>
       </div>
-    </div>
-  </header>
 
-  <div class="app">
-    <!-- ============ rail ============ -->
-    <aside class="rail">
       <section>
         <h2>输入</h2>
         <div class="seg" id="kindSeg">
@@ -467,7 +456,7 @@
     <!-- ============ stage ============ -->
     <main class="stage">
       <div class="stage-bar">
-        <span class="mono" id="frameLabel" style="font-size:15px; color:var(--ink-2); min-width:86px;">帧 0 / 0</span>
+        <span class="mono" id="frameLabel" style="font-size:13px; color:var(--on-2); min-width:84px;">帧 0 / 0</span>
         <button class="play-btn" id="btnPlay" aria-label="播放/暂停"><span id="playIcon" style="display:inline-flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span id="playLabel">播放</span></button>
         <button class="icon-btn" id="btnPrev" title="上一帧 (←)" aria-label="上一帧"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6z"/><path d="M20 5v14l-10-7z"/></svg></button>
         <button class="icon-btn" id="btnNext" title="下一帧 (→)" aria-label="下一帧"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 5h-2v14h2z"/><path d="M4 5v14l10-7z"/></svg></button>
@@ -475,7 +464,24 @@
           <button data-view="compare" class="on">并排</button>
           <button data-view="quad">四宫格</button>
         </div>
-        <select id="fps" style="margin-left:auto;">
+        <span style="flex:1;"></span>
+        <button class="btn btn-sm" id="btnAllMetrics">全部指标</button>
+        <div class="pop-wrap">
+      <button class="btn btn-sm" id="btnDisplay">显示</button>
+      <div class="popover hidden" id="displayPop">
+        <div class="row"><span class="lbl">灰度映射</span><select id="dispMode"></select></div>
+        <div class="row"><span class="lbl">伪彩色</span><select id="dispCmap"></select></div>
+        <div class="row"><span class="lbl">差分参考</span>
+          <select id="dispDiff"><option value="median">短期历史中值</option><option value="previous">前一帧</option></select>
+        </div>
+        <label class="switch-row"><span>轻度去斑平滑</span><input type="checkbox" id="dispDenoise" /></label>
+        <label class="switch-row"><span><span class="dot" style="background:#1e8e3e"></span>真值轮廓</span><input type="checkbox" id="dispTruth" checked /></label>
+        <label class="switch-row"><span><span class="dot" style="background:#d93025"></span>预测轮廓</span><input type="checkbox" id="dispPred" checked /></label>
+        <label class="switch-row"><span>像素锐化缩放</span><input type="checkbox" id="dispPixelated" checked /></label>
+      </div>
+    </div>
+  
+        <select id="fps">
           <option value="4">4 FPS</option>
           <option value="8" selected>8 FPS</option>
           <option value="12">12 FPS</option>
