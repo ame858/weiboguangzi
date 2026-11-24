@@ -5,6 +5,17 @@
 
 const $ = (id) => document.getElementById(id);
 
+const ICON_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const ICON_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+
+function setPlayState(playing) {
+  const icon = $("playIcon");
+  const label = $("playLabel");
+  if (!icon || !label) return;
+  icon.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+  label.textContent = playing ? "暂停" : "播放";
+}
+
 const METHODS = {
   threshold: "局部暗度阈值",
   difference: "时序背景差分",
@@ -587,14 +598,14 @@ function renderVideo() {
 function stopPlayback() {
   state.playing = false;
   if (state.timer) { clearTimeout(state.timer); state.timer = null; }
-  $("btnPlay").textContent = "▶ 播放";
+  setPlayState(false);
 }
 
 function togglePlayback() {
   if (state.playing) { stopPlayback(); return; }
   if (state.count <= 1) return;
   state.playing = true;
-  $("btnPlay").textContent = "⏸ 暂停";
+  setPlayState(true);
   const step = async () => {
     if (!state.playing) return;
     const t0 = performance.now();
