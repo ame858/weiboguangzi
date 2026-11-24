@@ -11,6 +11,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -25,6 +26,7 @@ from videosar.config import DatasetConfig, MWPConfig, SimulationConfig, VideoSAR
 from videosar.datasets.base import load_grayscale_frame
 from videosar.datasets.snl import SNLDataset
 from videosar.datasets.vsmb import VSMBDataset
+from videosar.detectors import get_detector, list_detectors
 from videosar.experiment import ExperimentRunner
 from videosar.simulation import VideoSARSimulator
 from videosar.tracker import ByteTrackLite, detect_moving_shadows_baseline
@@ -42,13 +44,38 @@ def _run_tracker_on_detections(detections, num_frames: int):
     return tracked
 
 
-def evaluate_real_dataset(dataset, runner: ExperimentRunner, split_prefix: str, dataset_name: str):
+def _flatten_detections(per_frame) -> list:
+    """Flatten ``List[List[BoxDetection]]`` from a detector into a flat list."""
+    return [det for frame_dets in per_frame for det in frame_dets]
+
+
+def _record_detector_metadata(artifacts: dict, detector_name: str) -> None:
+    """Add the selected detector name to the reproducibility snapshots.
+
+    Injects a single ``detector`` key into ``config.json`` and ``metrics.json``
+    without changing any of their existing fields.
+    """
+    for key in ("config", "metrics"):
+        path = artifacts.get(key)
+        if path is None:
+            continue
+        path = Path(path)
+        if not path.exists():
+            continue
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["detector"] = detector_name
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def evaluate_real_dataset(dataset, runner: ExperimentRunner, split_prefix: str, dataset_name: str, detector=None):
     """Run the baseline detector + tracker on every sequence of a real benchmark.
 
     Each sequence is evaluated as its own ``domain="real"`` split so that no
     frames from different videos are ever pooled. Ground-truth boxes come from
     the dataset's frame-indexed annotations (never from the detector).
     """
+    if detector is None:
+        detector = get_detector("baseline")
     results = []
     for seq in dataset.sequences:
         frames = np.stack(
@@ -63,7 +90,7 @@ def evaluate_real_dataset(dataset, runner: ExperimentRunner, split_prefix: str, 
         for frame_id in range(1, num_frames + 1):
             ground_truths.extend(seq.annotations_by_frame.get(frame_id, []))
 
-        raw_dets = detect_moving_shadows_baseline(frames)
+        raw_dets = _flatten_detections(detector.predict_sequence(frames))
         tracked = _run_tracker_on_detections(raw_dets, num_frames)
         res = runner.evaluate_split(
             split_name=f"{split_prefix}_{seq.sequence_id}",
@@ -93,6 +120,12 @@ def main() -> int:
     parser.add_argument("--num-frames", type=int, default=24)
     parser.add_argument("--mwp-enabled", action="store_true")
     parser.add_argument("--bg-image", type=str, default=None)
+    parser.add_argument(
+        "--detector",
+        choices=list_detectors(),
+        default="baseline",
+        help="Causal shadow detector to use for all modes (default: baseline)",
+    )
     args = parser.parse_args()
 
     cfg = VideoSARConfig(
@@ -112,6 +145,7 @@ def main() -> int:
     cfg.validate()
 
     runner = ExperimentRunner(cfg, run_dir=args.output_dir)
+    detector = get_detector(args.detector)
 
     if args.mode in {"smoke", "simulate"}:
         sim = VideoSARSimulator(cfg.simulation, cfg.radar, cfg.mwp)
@@ -119,7 +153,7 @@ def main() -> int:
         if args.mode == "simulate":
             seq.export_mot_directory(Path(args.output_dir) / "simulated_mot")
 
-        raw_dets = detect_moving_shadows_baseline(seq.frames)
+        raw_dets = _flatten_detections(detector.predict_sequence(seq.frames))
         tracked = _run_tracker_on_detections(raw_dets, num_frames=seq.frames.shape[0])
         res = runner.evaluate_split(
             split_name="synthetic_ka_baseline" + ("_mwp" if args.mwp_enabled else ""),
@@ -130,6 +164,7 @@ def main() -> int:
             tracked_predictions=tracked,
         )
         artifacts = runner.save_artifacts()
+        _record_detector_metadata(artifacts, args.detector)
         print(
             f"[{args.mode}] mAP@0.5={res['map_50']:.4f} | mAP@0.3={res['map_30']:.4f} | "
             f"FA/frame={res['fa_per_frame_50']:.3f} | MOTA={res['mot']['mota']:.4f} | "
@@ -140,7 +175,8 @@ def main() -> int:
 
     if args.mode == "eval-vsmb":
         ds = VSMBDataset(root_dir=args.data_root, split="test", tile_size=1024, tile_overlap=0)
-        results, artifacts = evaluate_real_dataset(ds, runner, "vsmb", "vsmb")
+        results, artifacts = evaluate_real_dataset(ds, runner, "vsmb", "vsmb", detector)
+        _record_detector_metadata(artifacts, args.detector)
         if not results:
             print(f"[eval-vsmb] no test sequences with >=2 frames under {args.data_root}")
         for seq_id, res in results:
@@ -154,7 +190,8 @@ def main() -> int:
 
     if args.mode == "eval-snl":
         ds = SNLDataset(root_dir=args.data_root, split="test")
-        results, artifacts = evaluate_real_dataset(ds, runner, "snl", "snl")
+        results, artifacts = evaluate_real_dataset(ds, runner, "snl", "snl", detector)
+        _record_detector_metadata(artifacts, args.detector)
         if not results:
             print(f"[eval-snl] no test frames under {args.data_root}")
         for seq_id, res in results:

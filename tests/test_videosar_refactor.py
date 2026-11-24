@@ -18,6 +18,7 @@ from videosar.config import (
     VideoSARConfig,
 )
 from videosar.data import verify_no_sequence_leakage
+from videosar.detectors import get_detector, list_detectors
 from videosar.datasets.base import compute_tile_grid, split_sequence_ids
 from videosar.datasets.snl import SNLDataset
 from videosar.datasets.vsmb import VSMBDataset
@@ -281,6 +282,42 @@ class TestCausalEvaluationContract(unittest.TestCase):
         contaminated = fit_normalization_stats([train, held_out])
         self.assertNotAlmostEqual(float(contaminated["mean"]), float(stats["mean"]))
         np.testing.assert_array_equal(apply_normalization(held_out, stats), first)
+
+
+class TestDetectorRegistry(unittest.TestCase):
+    """Registry lookups and the strict no-future-leakage guarantee of detectors."""
+
+    def test_registry_lists_baseline_and_rejects_unknown(self) -> None:
+        self.assertIn("baseline", list_detectors())
+        detector = get_detector("baseline")
+        self.assertEqual(detector.name, "baseline")
+        with self.assertRaises(ValueError):
+            get_detector("unknown")
+
+    def test_predict_sequence_is_strictly_causal(self) -> None:
+        """Corrupting frames 8..11 must not change the outputs for frames 0..7."""
+        rng = np.random.default_rng(1234)
+        frames_a = rng.integers(0, 180, size=(12, 48, 48), dtype=np.int16).astype(np.float32)
+        frames_b = frames_a.copy()
+        frames_b[8:] = np.float32(255.0)  # float32 avoids uint8 overflow on extremes
+
+        detector = get_detector("baseline")
+        out_a = detector.predict_sequence(frames_a)
+        out_b = detector.predict_sequence(frames_b)
+
+        self.assertEqual(len(out_a), 12)
+        self.assertEqual(len(out_b), 12)
+        for t in range(8):
+            self.assertEqual(
+                len(out_a[t]), len(out_b[t]), f"detection count changed at frame {t}"
+            )
+            for da, db in zip(out_a[t], out_b[t]):
+                self.assertEqual(
+                    (da.x1, da.y1, da.x2, da.y2),
+                    (db.x1, db.y1, db.x2, db.y2),
+                    f"coordinates changed at frame {t}",
+                )
+                self.assertEqual(da.score, db.score, f"confidence changed at frame {t}")
 
 
 if __name__ == "__main__":
