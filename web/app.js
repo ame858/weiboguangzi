@@ -7,6 +7,8 @@ const $ = (id) => document.getElementById(id);
 
 const ICON_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 const ICON_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+const ICON_CHEVRON = '<svg class="m3-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+const ICON_CHECK = '<svg class="m3-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 
 function setPlayState(playing) {
   const icon = $("playIcon");
@@ -65,6 +67,151 @@ const state = {
   videoResult: null,
   stepNo: 0,
 };
+
+/* ------------------------------------------------------------ Gemini M3 custom select */
+let activeM3Menu = null;
+let activeM3Trigger = null;
+
+function closeM3Menu(restoreFocus = false) {
+  if (activeM3Menu) {
+    activeM3Menu.remove();
+    activeM3Menu = null;
+  }
+  if (activeM3Trigger) {
+    activeM3Trigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus) activeM3Trigger.focus();
+    activeM3Trigger = null;
+  }
+}
+
+function syncM3Select(sel) {
+  if (!sel || !sel._m3Wrap) return;
+  const wrap = sel._m3Wrap;
+  const label = sel._m3Label;
+  wrap.classList.toggle("hidden", sel.classList.contains("hidden"));
+  const opt = sel.options[sel.selectedIndex] || sel.options[0];
+  label.textContent = opt ? opt.textContent : "—";
+  if (sel._m3Trigger) {
+    sel._m3Trigger.title = opt ? (opt.title || opt.textContent) : "";
+    sel._m3Trigger.disabled = sel.disabled;
+  }
+}
+
+function openM3Menu(sel) {
+  const trigger = sel._m3Trigger;
+  if (!trigger) return;
+  const isSame = activeM3Trigger === trigger;
+  closeM3Menu(false);
+  if (isSame) return;
+
+  const menu = document.createElement("div");
+  menu.className = "m3-menu";
+  menu.setAttribute("role", "listbox");
+
+  [...sel.options].forEach((opt) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "m3-menu-item";
+    item.setAttribute("role", "option");
+    const selected = opt.value === sel.value;
+    if (selected) {
+      item.classList.add("is-selected");
+      item.setAttribute("aria-selected", "true");
+    }
+    item.innerHTML = `<span class="m3-menu-item-text">${esc(opt.textContent)}</span>${selected ? ICON_CHECK : ""}`;
+    if (opt.title) item.title = opt.title;
+    item.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const changed = sel.value !== opt.value;
+      sel.value = opt.value;
+      syncM3Select(sel);
+      closeM3Menu(true);
+      if (changed) sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  activeM3Menu = menu;
+  activeM3Trigger = trigger;
+  trigger.setAttribute("aria-expanded", "true");
+
+  // 视口自适应定位：贴紧触发器，靠近底部自动向上翻，靠近右侧自动右对齐
+  const rect = trigger.getBoundingClientRect();
+  const minW = Math.max(rect.width, 148);
+  menu.style.minWidth = `${Math.min(minW, 300)}px`;
+  const mRect = menu.getBoundingClientRect();
+  const pad = 10;
+
+  let left = rect.left;
+  if (left + mRect.width > window.innerWidth - pad) {
+    left = Math.max(pad, rect.right - mRect.width);
+  }
+  let top = rect.bottom + 6;
+  if (top + mRect.height > window.innerHeight - pad && rect.top - 6 - mRect.height > pad) {
+    top = rect.top - 6 - mRect.height;
+    menu.classList.add("flip-up");
+  }
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+
+  const selectedItem = menu.querySelector(".is-selected");
+  if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" });
+}
+
+function upgradeSelect(sel) {
+  if (!sel || sel._m3Wrap) {
+    if (sel) syncM3Select(sel);
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "m3-select";
+  if (sel.style.maxWidth) wrap.style.maxWidth = sel.style.maxWidth;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "m3-select-trigger";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  if (sel.getAttribute("aria-label")) {
+    trigger.setAttribute("aria-label", sel.getAttribute("aria-label"));
+  }
+
+  const label = document.createElement("span");
+  label.className = "m3-select-label";
+  trigger.appendChild(label);
+  trigger.insertAdjacentHTML("beforeend", ICON_CHEVRON);
+
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  wrap.appendChild(trigger);
+  sel.classList.add("native-select-hidden");
+
+  sel._m3Wrap = wrap;
+  sel._m3Trigger = trigger;
+  sel._m3Label = label;
+
+  trigger.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openM3Menu(sel);
+  });
+
+  sel.addEventListener("change", () => syncM3Select(sel));
+
+  // 自动监听 option 变化和 hidden 类名变化
+  const obs = new MutationObserver(() => syncM3Select(sel));
+  obs.observe(sel, { childList: true, attributes: true, attributeFilter: ["class", "disabled"] });
+
+  syncM3Select(sel);
+}
+
+function upgradeAllSelects(root = document) {
+  root.querySelectorAll("select").forEach((sel) => {
+    // 空槽位内部隐藏的占位 select 不需要渲染触发器
+    if (sel.closest(".col-empty")) return;
+    upgradeSelect(sel);
+  });
+}
 
 /* ------------------------------------------------------------ utilities */
 async function apiJson(url, options = {}) {
@@ -173,6 +320,8 @@ async function boot() {
     opt.textContent = cmap;
     $("dispCmap").appendChild(opt);
   }
+  syncM3Select($("dispMode"));
+  syncM3Select($("dispCmap"));
   $("modelPath").value = data.defaults.unet_model || "";
   await reloadSequences();
 }
@@ -190,12 +339,14 @@ async function reloadSequences(refresh = false) {
     sel.appendChild(opt);
   }
   if (!seqs.sequences.length) {
+    syncM3Select(sel);
     $("stageEmpty").classList.remove("hidden");
     $("stageEmpty").textContent = "runs/ 下没有找到 frames.npy，请检查目录或在左侧粘贴路径。";
     return;
   }
   const preferred = seqs.sequences.find((s) => s.label.includes("结题演示·优先")) || seqs.sequences[0];
   sel.value = preferred.path;
+  syncM3Select(sel);
   await loadSequence(preferred.path);
 }
 
@@ -262,6 +413,7 @@ async function refreshMeta() {
 
 /* ------------------------------------------------------------ render */
 async function render() {
+  closeM3Menu(false);
   if (state.kind === "video") {
     renderVideo();
     return;
@@ -315,6 +467,7 @@ function slotOptions(current) {
 function openSlotMenu(colEl, slot) {
   const wasOpen = colEl.classList.contains("menu-open");
   closeSlotMenus();
+  closeM3Menu(false);
   if (wasOpen) return;
 
   colEl.classList.add("menu-open");
@@ -430,6 +583,8 @@ async function renderColumns() {
     });
     sel.addEventListener("click", (ev) => ev.stopPropagation());
   }
+  upgradeAllSelects($("columns"));
+
   for (const box of document.querySelectorAll("#columns .slot-empty")) {
     box.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -580,6 +735,7 @@ async function renderQuad() {
     .map((slotIdx, i) => `<option value="${i}"${i === state.quadSlot ? " selected" : ""}>${esc(labelOf(state.results[slotIdx]))}</option>`)
     .join("");
   sel.classList.toggle("hidden", state.slots.length < 2);
+  syncM3Select(sel);
   if (state.sides.length) renderPills(state.sides);
 }
 
@@ -930,6 +1086,8 @@ function canvasPoint(ev) {
 
 /* ------------------------------------------------------------ events */
 function bind() {
+  upgradeAllSelects(document);
+
   $("kindSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-kind]");
     if (btn) setKind(btn.dataset.kind);
@@ -952,7 +1110,10 @@ function bind() {
         const target = path.toLowerCase().endsWith(".npy") ? path.replace(/[\\/][^\\/]+$/, "") : path;
         $("seqPath").value = target;
         const opt = [...$("seqSelect").options].find((o) => o.value === target);
-        if (opt) $("seqSelect").value = target;
+        if (opt) {
+          $("seqSelect").value = target;
+          syncM3Select($("seqSelect"));
+        }
         await loadSequence(target);
       }
     } catch (err) {
@@ -1084,12 +1245,17 @@ function bind() {
 
   $("btnDisplay").addEventListener("click", (ev) => {
     ev.stopPropagation();
+    closeM3Menu(false);
     $("displayPop").classList.toggle("hidden");
   });
   document.addEventListener("click", (ev) => {
-    if (!ev.target.closest(".pop-wrap")) $("displayPop").classList.add("hidden");
+    if (!ev.target.closest(".pop-wrap") && !ev.target.closest(".m3-menu")) $("displayPop").classList.add("hidden");
     if (!ev.target.closest(".col-empty")) closeSlotMenus();
+    if (!ev.target.closest(".m3-select") && !ev.target.closest(".m3-menu")) closeM3Menu(false);
   });
+  window.addEventListener("resize", () => closeM3Menu(false));
+  document.querySelector(".rail-body")?.addEventListener("scroll", () => closeM3Menu(false), { passive: true });
+
   ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred"].forEach((id) => {
     $(id).addEventListener("change", () => {
       state.quadCache.clear();
@@ -1117,6 +1283,11 @@ function bind() {
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (activeM3Menu) {
+        e.preventDefault();
+        closeM3Menu(true);
+        return;
+      }
       closeSlotMenus();
       if (!$("metricSheet").classList.contains("hidden")) {
         e.preventDefault();

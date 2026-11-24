@@ -76,13 +76,15 @@
       --r-xs: 6px;
       --r-sm: 10px;
       --r-md: 14px;
-      --r-lg: 18px;
+      --r-lg: 20px;
+      --r-menu: 22px;
       --r-xl: 28px;
       --r-full: 999px;
 
-      /* Tonal Elevation 优先，阴影克制仅用于浮层/弹框 */
+      /* Tonal Elevation 优先，浮层采用 Gemini 柔和弥散阴影 */
       --shadow-1: 0 1px 2px rgba(11, 87, 208, 0.05), 0 1px 3px rgba(31, 31, 31, 0.05);
-      --shadow-2: 0 4px 12px rgba(15, 23, 42, 0.08), 0 12px 32px rgba(15, 23, 42, 0.10);
+      --shadow-2: 0 4px 20px rgba(15, 23, 42, 0.09), 0 1px 4px rgba(15, 23, 42, 0.04);
+      --shadow-menu: 0 6px 28px rgba(15, 23, 42, 0.11), 0 1px 5px rgba(15, 23, 42, 0.05);
       --t-fast: 120ms;
       --t-base: 180ms;
       --t-mid: 240ms;
@@ -260,6 +262,221 @@
       background: var(--surface-white);
       border-color: var(--cta);
       box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.14);
+    }
+
+    /* ---------- 全局 Gemini 风格圆角下拉组件（替代所有原生 <select>） ---------- */
+    select.native-select-hidden {
+      display: none !important;
+    }
+    .m3-select {
+      position: relative;
+      display: inline-flex;
+      width: 100%;
+      min-width: 0;
+    }
+    .m3-select-trigger {
+      width: 100%;
+      height: 38px;
+      padding: 0 11px 0 12px;
+      border: 1px solid var(--outline);
+      border-radius: var(--r-sm);
+      background: var(--field);
+      color: var(--on);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 400;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      text-align: left;
+      min-width: 0;
+      font-variant-numeric: tabular-nums;
+      transition: background var(--ease), border-color var(--ease), color var(--ease), box-shadow var(--ease);
+    }
+    .m3-select-trigger:hover {
+      background: var(--field-hover);
+      border-color: var(--outline-2);
+    }
+    .m3-select-trigger[aria-expanded="true"] {
+      background: var(--surface-white);
+      border-color: var(--cta);
+      box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.14);
+    }
+    .m3-select-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .m3-select-chev {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      color: var(--on-3);
+      transition: transform var(--ease), color var(--ease);
+    }
+    .m3-select-trigger[aria-expanded="true"] .m3-select-chev {
+      transform: rotate(180deg);
+      color: var(--cta);
+    }
+
+    /* 顶部舞台栏 / 四宫格栏里的胶囊形下拉（如 8 FPS、quadSource） */
+    .stage-bar .m3-select,
+    .quad-bar .m3-select {
+      width: auto;
+    }
+    .stage-bar .m3-select-trigger,
+    .quad-bar .m3-select-trigger {
+      height: 34px;
+      padding: 0 10px 0 14px;
+      border-radius: var(--r-full);
+      background: var(--surface);
+      border-color: transparent;
+      color: var(--on-2);
+      font-weight: 500;
+      font-size: 12.5px;
+    }
+    .stage-bar .m3-select-trigger:hover,
+    .quad-bar .m3-select-trigger:hover {
+      background: var(--surface-2);
+      border-color: transparent;
+      color: var(--on);
+    }
+    .stage-bar .m3-select-trigger[aria-expanded="true"],
+    .quad-bar .m3-select-trigger[aria-expanded="true"] {
+      background: var(--pressed);
+      border-color: transparent;
+      color: var(--on-pressed);
+      box-shadow: none;
+    }
+    .stage-bar .m3-select-trigger[aria-expanded="true"] .m3-select-chev,
+    .quad-bar .m3-select-trigger[aria-expanded="true"] .m3-select-chev {
+      color: var(--on-pressed);
+    }
+
+    /* 对比列头的轻量标题下拉（.slotPick） */
+    .col-head .m3-select {
+      width: auto;
+      max-width: 72%;
+    }
+    .col-head .m3-select-trigger {
+      height: 28px;
+      padding: 0 8px 0 10px;
+      border-radius: var(--r-full);
+      background: transparent;
+      border-color: transparent;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--on);
+      gap: 4px;
+    }
+    .col-head .m3-select-trigger:hover {
+      background: var(--surface-2);
+      border-color: transparent;
+    }
+    .col-head .m3-select-trigger[aria-expanded="true"] {
+      background: var(--pressed);
+      border-color: transparent;
+      color: var(--on-pressed);
+      box-shadow: none;
+    }
+
+    /* 显示设置 Popover 里的下拉 */
+    .popover .m3-select-trigger {
+      height: 36px;
+      background: var(--surface);
+      border-color: transparent;
+    }
+    .popover .m3-select-trigger:hover {
+      background: var(--surface-2);
+      border-color: transparent;
+    }
+    .popover .m3-select-trigger[aria-expanded="true"] {
+      background: var(--surface-white);
+      border-color: var(--cta);
+    }
+
+    /* 悬浮圆角下拉菜单（挂载在 body，永不被容器裁剪，复刻 Gemini 圆框质感） */
+    .m3-menu {
+      position: fixed;
+      z-index: 120;
+      min-width: 148px;
+      max-width: min(320px, calc(100vw - 24px));
+      max-height: 280px;
+      overflow-y: auto;
+      background: var(--surface-white);
+      border: 1px solid rgba(15, 23, 42, 0.05);
+      border-radius: var(--r-menu);
+      box-shadow: var(--shadow-menu);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(68, 71, 70, 0.18) transparent;
+      animation: m3MenuIn 150ms var(--e-standard) both;
+    }
+    .m3-menu::-webkit-scrollbar { width: 5px; }
+    .m3-menu::-webkit-scrollbar-thumb {
+      background: rgba(68, 71, 70, 0.18);
+      border-radius: var(--r-full);
+    }
+    @keyframes m3MenuIn {
+      from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .m3-menu.flip-up {
+      animation-name: m3MenuInUp;
+    }
+    @keyframes m3MenuInUp {
+      from { opacity: 0; transform: translateY(4px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .m3-menu-item {
+      width: 100%;
+      border: none;
+      background: transparent;
+      border-radius: 12px;
+      padding: 9px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--on);
+      text-align: left;
+      cursor: pointer;
+      font-variant-numeric: tabular-nums;
+      transition: background var(--t-fast) var(--e-standard), color var(--t-fast) var(--e-standard);
+    }
+    .m3-menu-item:hover,
+    .m3-menu-item:focus-visible {
+      background: var(--surface);
+      outline: none;
+    }
+    .m3-menu-item.is-selected {
+      background: #e8f0fe;
+      color: var(--cta);
+      font-weight: 500;
+    }
+    .m3-menu-item.is-selected:hover {
+      background: var(--pressed);
+    }
+    .m3-menu-item-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .m3-menu-check {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      color: var(--cta);
     }
 
     .pick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -580,17 +797,6 @@
     .play-btn.playing:hover { background: var(--pressed-hover); }
 
     .stage-bar .seg { background: var(--surface); }
-    .stage-bar select {
-      width: auto;
-      height: 34px;
-      padding: 0 12px;
-      border-radius: var(--r-full);
-      background: var(--surface);
-      border-color: transparent;
-      font-weight: 500;
-      color: var(--on-2);
-    }
-    .stage-bar select:hover { background: var(--surface-2); color: var(--on); }
 
     /* ---------- 图像对比区：Flex 动态列宽，空槽位自动折叠为紧凑入口 ---------- */
     .columns {
@@ -618,20 +824,6 @@
       padding: 8px 12px 6px;
       flex: 0 0 auto;
     }
-    .col-head select {
-      width: auto;
-      max-width: 72%;
-      height: 28px;
-      padding: 0 8px;
-      background: transparent;
-      border: none;
-      border-radius: var(--r-full);
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--on);
-    }
-    .col-head select:hover { background: var(--surface-2); color: var(--on); }
-    .col-head select:focus { background: var(--surface-white); box-shadow: 0 0 0 2px rgba(11, 87, 208, 0.18); }
     .col-head .f1 {
       margin-left: auto;
       font-size: 12px;
@@ -768,20 +960,20 @@
       display: none;
     }
 
-    /* 自定义 M3 空槽位选择菜单（取代生硬的 Windows 原生 <select> 下拉框） */
+    /* 空槽位 Gemini 圆角浮层菜单 */
     .slot-menu {
       position: absolute;
-      right: calc(100% + 8px);
+      right: calc(100% + 10px);
       top: 50%;
       transform: translateY(-50%);
       z-index: 35;
-      min-width: 196px;
-      max-width: 240px;
+      min-width: 204px;
+      max-width: 248px;
       background: var(--surface-white);
-      border: 1px solid var(--outline);
-      border-radius: var(--r-lg);
-      box-shadow: var(--shadow-2);
-      padding: 6px;
+      border: 1px solid rgba(15, 23, 42, 0.05);
+      border-radius: var(--r-menu);
+      box-shadow: var(--shadow-menu);
+      padding: 8px;
       display: flex;
       flex-direction: column;
       gap: 2px;
@@ -792,8 +984,8 @@
       to { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
     }
     .slot-menu-title {
-      padding: 6px 10px 4px;
-      font-size: 11px;
+      padding: 6px 12px 4px;
+      font-size: 11.5px;
       font-weight: 600;
       color: var(--on-3);
       letter-spacing: 0.3px;
@@ -802,14 +994,14 @@
       width: 100%;
       border: none;
       background: transparent;
-      border-radius: var(--r-sm);
-      padding: 8px 10px;
+      border-radius: 12px;
+      padding: 9px 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       font-family: inherit;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 500;
       color: var(--on);
       text-align: left;
@@ -820,24 +1012,20 @@
       background: var(--surface);
       color: var(--cta);
     }
-    .slot-menu-item.active {
-      background: var(--pressed);
-      color: var(--on-pressed);
-    }
     .slot-menu-item .tag {
       font-size: 10.5px;
       font-weight: 500;
       color: var(--on-3);
       background: var(--surface);
-      padding: 1px 6px;
+      padding: 2px 7px;
       border-radius: var(--r-full);
       flex-shrink: 0;
     }
     .slot-menu-hint {
-      padding: 6px 10px;
+      padding: 8px 12px 6px;
       margin-top: 2px;
       border-top: 1px solid var(--outline);
-      font-size: 11px;
+      font-size: 11.5px;
       line-height: 1.5;
       color: var(--on-3);
     }
@@ -1091,18 +1279,18 @@
       word-break: break-all;
     }
 
-    /* ---------- 显示设置 Popover ---------- */
+    /* ---------- 显示设置 Popover（统一 Gemini 圆框风格） ---------- */
     .pop-wrap { position: relative; }
     .popover {
       position: absolute;
       right: 0;
-      top: 40px;
+      top: 42px;
       z-index: 30;
-      width: 260px;
+      width: 264px;
       background: var(--surface-white);
-      border: 1px solid var(--outline);
-      border-radius: var(--r-lg);
-      box-shadow: var(--shadow-2);
+      border: 1px solid rgba(15, 23, 42, 0.05);
+      border-radius: var(--r-menu);
+      box-shadow: var(--shadow-menu);
       padding: 16px;
       animation: popIn var(--t-base) var(--e-standard) both;
     }
@@ -1110,10 +1298,8 @@
       from { opacity: 0; transform: translateY(-4px) scale(0.98); }
       to { opacity: 1; transform: none; }
     }
-    .popover .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .popover .row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
     .popover .row:last-child { margin-bottom: 0; }
-    .popover select { background: var(--surface); border-color: transparent; }
-    .popover select:hover { background: var(--surface-2); }
 
     .switch-row {
       display: flex;
@@ -1181,7 +1367,7 @@
       overflow: auto;
       background: var(--surface-white);
       border-radius: var(--r-xl);
-      box-shadow: var(--shadow-2);
+      box-shadow: var(--shadow-menu);
       padding: 22px 24px;
       animation: sheetIn var(--t-mid) var(--e-standard) both;
     }
@@ -1244,13 +1430,14 @@
 
     .btn:focus-visible, .icon-btn:focus-visible, .play-btn:focus-visible, .method:focus-visible,
     .seg button:focus-visible, .switch-row input:focus-visible, .strip button:focus-visible,
-    .slot-empty:focus-visible, .slot-menu-item:focus-visible, .link-btn:focus-visible {
+    .slot-empty:focus-visible, .slot-menu-item:focus-visible, .link-btn:focus-visible,
+    .m3-select-trigger:focus-visible {
       outline: 2px solid var(--cta);
       outline-offset: 2px;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .step, .popover, .slot-menu, .sheet, .sheet-card, .dots i { animation: none !important; }
+      .step, .popover, .slot-menu, .m3-menu, .sheet, .sheet-card, .dots i { animation: none !important; }
       .btn, .play-btn, .method, .icon-btn, .col { transition: none !important; }
     }
 
@@ -1475,6 +1662,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=7"></script>
 </body>
 </html>
