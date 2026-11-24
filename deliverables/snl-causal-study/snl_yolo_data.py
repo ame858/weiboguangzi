@@ -64,6 +64,18 @@ def _compute_causal_raw_channels(
             out[t, :, :, 2] = frames[t]
         return out
 
+    if mode == "causal-core":
+        # The three causal channels already validated by CenterDetector's raw
+        # profile: current frame, short-term darkening, and lagged background
+        # residual. Reuse CausalFeatures so the history/registration logic and
+        # its prefix-causality guarantee stay identical to the repository.
+        from videosar.snl_causal import CausalFeatures
+
+        scan = CausalFeatures("raw")
+        for t in range(n_frames):
+            out[t] = np.moveaxis(scan.network_channels(frames[t]), 0, -1)
+        return out
+
     if mode != "causal-motion":
         raise ValueError(f"Unsupported mode: {mode}")
 
@@ -98,7 +110,7 @@ def normalize_with_train_stats(
 
     for c in range(3):
         vals = train_slice[..., c]
-        if mode == "causal-motion" and c in (1, 2):
+        if mode in ("causal-motion", "causal-core") and c in (1, 2):
             lo, hi = 0.0, float(np.percentile(vals, 99.5))
         else:
             lo, hi = float(np.percentile(vals, 1.0)), float(np.percentile(vals, 99.0))
@@ -213,7 +225,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--labels-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--mode", choices=["causal-motion", "3frame"], default="causal-motion")
+    parser.add_argument("--mode", choices=["causal-motion", "3frame", "causal-core"], default="causal-motion")
     parser.add_argument("--ema-alpha", type=float, default=0.15)
     args = parser.parse_args()
     export_dataset(args.labels_dir, args.output_dir, mode=args.mode, ema_alpha=args.ema_alpha)
