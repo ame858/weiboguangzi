@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "videosar"
+version = "2.0.0"
+description = "Refactored Ka-Band & Microwave Photonics Video-SAR detection, tracking, and physical simulation toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "opencv-python>=4.8",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.1"]
+radarsimpy = ["radarsimpy"]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+include = ["videosar*"]
