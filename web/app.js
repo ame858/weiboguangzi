@@ -106,12 +106,16 @@ function updateCtx() {
   if (state.kind === "video") {
     if (state.video) parts.push(`<b>${esc(state.video.split(/[\\/]/).pop())}</b>`);
   } else if (state.seq) {
-    const tail = state.seq.split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+    const tail = state.seq.split(/[\\/]/).filter(Boolean).slice(-1)[0];
     parts.push(`<b>${esc(tail)}</b>`);
   }
   if (state.count) parts.push(`${state.count} 帧`);
   const shown = state.slots.map((i) => labelOf(state.results[i])).filter((x) => x !== "—");
-  if (shown.length) parts.push(shown.map(esc).join(" · "));
+  if (shown.length) {
+    parts.push(shown.length > 2
+      ? `${shown.slice(0, 2).map(esc).join(" · ")} 等 ${shown.length} 个`
+      : shown.map(esc).join(" · "));
+  }
   if (!parts.length) {
     $("ctxText").textContent = "未选择输入";
     $("ctxChip").classList.remove("live");
@@ -388,7 +392,7 @@ function pillCard(label, value, delta, digits = 3) {
   let tail = "";
   if (delta !== null && delta !== undefined) {
     if (Math.abs(delta) < 1e-9) {
-      tail = `<em style="color:var(--text-3);">±0</em>`;
+      tail = `<em style="color:var(--ink-3);">±0</em>`;
     } else {
       const cls = delta > 0 ? "up" : "down";
       const arrow = delta > 0 ? "↑" : "↓";
@@ -423,7 +427,7 @@ function renderPills(sides) {
 
 function renderMetricTable(sides) {
   if (!sides.some((s) => s.summary)) {
-    $("metricTable").innerHTML = `<tr><td style="color:var(--text-3);">暂无指标</td></tr>`;
+    $("metricTable").innerHTML = `<tr><td style="color:var(--ink-3);">暂无指标</td></tr>`;
     return;
   }
   const base = sides[0]?.summary || {};
