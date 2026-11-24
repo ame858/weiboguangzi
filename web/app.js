@@ -198,7 +198,6 @@ function upgradeSelect(sel) {
 
   sel.addEventListener("change", () => syncM3Select(sel));
 
-  // 自动监听 option 变化和 hidden 类名变化
   const obs = new MutationObserver(() => syncM3Select(sel));
   obs.observe(sel, { childList: true, attributes: true, attributeFilter: ["class", "disabled"] });
 
@@ -207,7 +206,6 @@ function upgradeSelect(sel) {
 
 function upgradeAllSelects(root = document) {
   root.querySelectorAll("select").forEach((sel) => {
-    // 空槽位内部隐藏的占位 select 不需要渲染触发器
     if (sel.closest(".col-empty")) return;
     upgradeSelect(sel);
   });
@@ -851,8 +849,9 @@ function resetSteps() {
   $("logWrap").classList.remove("hidden", "collapsed");
   $("log").classList.add("hidden");
   $("log").textContent = "";
+  $("btnRawLog").textContent = "原始日志";
   $("steps").innerHTML = "";
-  $("runDots").classList.remove("done");
+  $("runDots").classList.remove("done", "err");
   $("runTitle").textContent = "正在运行…";
   state.stepNo = 0;
 }
@@ -860,7 +859,6 @@ function resetSteps() {
 function addStep(text, cls = "") {
   const host = $("steps");
   const prev = host.lastElementChild;
-  // 新一步出现时，上一步转为"已完成"的灰字，跟录屏里的节奏一致
   if (prev && !prev.classList.contains("group")) prev.classList.add("done");
   const el = document.createElement("div");
   el.className = `step ${cls}`.trim();
@@ -914,16 +912,18 @@ function streamJob(jobId, onDone) {
     es.close();
     const { ok, result } = JSON.parse(ev.data);
     setBadge($("runBadge"), ok ? "已完成" : "执行失败", ok ? "ok" : "err");
-    $("runDots").classList.add("done");
-    $("runTitle").textContent = ok ? "已完成" : "执行失败";
+    $("runDots").classList.add(ok ? "done" : "err");
+    const countText = state.stepNo ? ` · ${state.stepNo} 步` : "";
+    $("runTitle").textContent = ok ? `已完成${countText}` : "执行失败";
     $("steps").querySelectorAll(".step").forEach((el) => el.classList.add("done"));
-    // 跑完收起成一行，把画布高度还给结果
-    setTimeout(() => $("logWrap").classList.add("collapsed"), 1400);
+    // 跑完自动收成右下角小胶囊，失败时保留展开方便查看原因
+    if (ok) setTimeout(() => $("logWrap").classList.add("collapsed"), 1400);
     onDone(ok, result);
   });
   es.onerror = () => {
     es.close();
     setBadge($("runBadge"), "连接中断", "err");
+    $("runDots").classList.add("err");
     $("runTitle").textContent = "连接中断";
   };
 }
@@ -973,8 +973,11 @@ async function runDetection() {
   } catch (err) {
     $("btnRun").disabled = false;
     setBadge($("runBadge"), "启动失败", "err");
-    $("logWrap").classList.remove("hidden");
+    $("logWrap").classList.remove("hidden", "collapsed");
+    $("runDots").classList.add("err");
+    $("runTitle").textContent = "启动失败";
     $("log").classList.remove("hidden");
+    $("btnRawLog").textContent = "隐藏日志";
     $("log").textContent = err.message;
   }
 }
@@ -1007,8 +1010,11 @@ async function runVideoDetection() {
   } catch (err) {
     $("btnRun").disabled = false;
     setBadge($("runBadge"), "启动失败", "err");
-    $("logWrap").classList.remove("hidden");
+    $("logWrap").classList.remove("hidden", "collapsed");
+    $("runDots").classList.add("err");
+    $("runTitle").textContent = "启动失败";
     $("log").classList.remove("hidden");
+    $("btnRawLog").textContent = "隐藏日志";
     $("log").textContent = err.message;
   }
 }
@@ -1218,7 +1224,16 @@ function bind() {
   $("btnRawLog").addEventListener("click", (ev) => {
     ev.stopPropagation();
     $("logWrap").classList.remove("collapsed");
-    $("log").classList.toggle("hidden");
+    const isHidden = $("log").classList.toggle("hidden");
+    $("btnRawLog").textContent = isHidden ? "原始日志" : "隐藏日志";
+  });
+  $("btnToggleLog").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    $("logWrap").classList.toggle("collapsed");
+  });
+  $("btnCloseLog").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    $("logWrap").classList.add("hidden");
   });
   $("logWrap").querySelector(".run-head").addEventListener("click", () => {
     $("logWrap").classList.toggle("collapsed");
