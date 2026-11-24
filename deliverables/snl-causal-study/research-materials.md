@@ -23,6 +23,8 @@ VSDFormer 固定提交 `c61fb8e744c06f22815f07ad1a0377bebd7c9feb` 提供多段�
 
 余安喜等的跟踪研究声明机载实测部分使用 SNL，逐帧阴影由人工标注，论文列出向通讯作者申请数据的方式。这可作为同源重标的另一条线索，需索取精确帧号和原尺寸框。何志华等发表了 SNL 车辆标注示例，期刊页面的资源附件数为零。这两项均未找到可直接计分的逐帧文件。[余安喜等，2025](https://doi.org/10.3390/rs17060959) · [何志华等，2022](https://doi.org/10.11999/JEIT210853)
 
+ICEYE 的现有七个采集项均提供 `vid-cog` 资产。文件头抽查确认普卡尔帕、苏格兰南部和利马的 VID GeoTIFF 均有 25 个 UInt16 子孔径图像波段。普卡尔帕一个中心块的三个抽测波段各有 408–623 个不同的非零幅度码值。利马按字节范围读取第 1、13、25 波段的同一个 512×512 幅度块，分别解出 1,227、1,604、2,011 个不同码值。视频 GeoTIFF 与同次采集的展示 MP4 使用不同像素网格。利马已读出全部 25 个瓦片波段，并在共同覆盖窗口完成对齐和注入对照。单幅 GRD 幅度图及单幅复数 SLC 各自提供不同信息。[利马对照](README.md#同次采集的-uint16-与-mp4-对照) · [ICEYE 产品规格](https://sar.iceye.com/latest/productspecification/dataproducts/#543-sar-video-vid) · [普卡尔帕采集项](https://iceye-open-data-catalog.s3.us-west-2.amazonaws.com/stac-items/2026/03/ICEYE_6QE022_20260331T033546Z_9417828_X44_SLEDF.json)
+
 ## 可以直接复用的证据
 
 - Jiangxb8 的 Faster R-CNN 在 14 帧校准段选中第 8 轮。在相同 48 帧、449 个标签的开发复核段命中 106 个、误报 536 个，查准率 **16.51%**、召回率 **23.61%**、F1 **19.43%**。七帧交付工具的对应数值为 36.69%、22.72%、28.06%。两者都用逐帧一对一框 IoU ≥ 0.50。 [开源方法实跑记录](../../runs/snl-causal-study/prospective/decision-jiang-faster-rcnn-1x-epoch8.json)
