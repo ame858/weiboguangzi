@@ -16,6 +16,7 @@
       --on-2: #5f6368;
       --on-3: #80868b;
       --outline: #e4e6e9;
+      --outline-v: var(--outline);
       --outline-2: #d9dce0;
       --cta: #2b2d31;
       --cta-hover: #151619;
@@ -101,7 +102,7 @@
       text-overflow: ellipsis; transition: box-shadow var(--ease), border-color var(--ease), background var(--ease);
     }
     input::placeholder { color: var(--on-3); }
-    input:hover, select:hover { background: #e9eef6; }
+    input:hover, select:hover { background: var(--field-hover); }
     input:focus, select:focus { background: var(--surface); border-color: var(--outline-2); box-shadow: 0 0 0 2px rgba(31, 31, 31, 0.10); }
 
     .pick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -109,13 +110,13 @@
     .method-list { display: flex; flex-direction: column; gap: 8px; }
     .method {
       display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px;
-      border: 1px solid var(--outline-v); border-radius: var(--r-sm); background: var(--surface);
+      border: 1px solid var(--outline); border-radius: var(--r-sm); background: var(--surface);
       cursor: pointer; font-family: inherit; font-size: 13px; color: var(--on-2);
       text-align: left; transition: background var(--ease), border-color var(--ease), color var(--ease);
     }
     .method:hover { background: var(--field); }
     .method .tick {
-      width: 18px; height: 18px; border: 1.5px solid var(--outline); border-radius: var(--r-xs);
+      width: 18px; height: 18px; border: 1.5px solid var(--outline-2); border-radius: var(--r-xs);
       flex-shrink: 0; display: grid; place-items: center; color: transparent;
     }
     .method.on {
@@ -124,7 +125,7 @@
     }
     .method.on .tick { background: var(--cta); border-color: var(--cta); color: #fff; }
 
-    .rail details { border-top: 1px solid var(--outline-v); padding-top: 14px; }
+    .rail details { border-top: 1px solid var(--outline); padding-top: 14px; }
     .rail summary {
       cursor: pointer; list-style: none; font-size: 12px; font-weight: 500;
       letter-spacing: 0.4px; text-transform: uppercase; color: var(--on-3);
@@ -150,11 +151,11 @@
       font-size: 13px; font-weight: 500; letter-spacing: 0.1px; cursor: pointer;
       white-space: nowrap; transition: background var(--ease), color var(--ease), box-shadow var(--ease);
     }
-    .btn:hover { background: #e3e9f2; color: var(--on); }
+    .btn:hover { background: var(--field-hover); color: var(--on); }
     .btn-sm { height: 34px; padding: 0 14px; font-size: 12.5px; }
     .btn-primary { background: var(--cta); color: #fff; }
     .btn-primary:hover { background: var(--cta-hover); color: #fff; }
-    .btn-primary:disabled { background: var(--on-3); cursor: not-allowed; box-shadow: none; }
+    .btn-primary:disabled { background: #d9dce0; color: var(--on-3); cursor: not-allowed; box-shadow: none; }
     .run-btn { width: 100%; height: 44px; font-size: 14px; }
 
     .badge {
@@ -180,11 +181,12 @@
     .icon-btn:hover { background: rgba(68, 71, 70, 0.08); color: var(--on); }
     .play-btn {
       height: 36px; padding: 0 18px 0 14px; border-radius: var(--r-full); border: none;
-      background: var(--cta); color: #fff; font-family: inherit; font-size: 13px;
+      background: var(--surface); color: var(--on); border: 1px solid var(--outline-2);
+      font-family: inherit; font-size: 13px;
       font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-      transition: background var(--ease);
+      transition: background var(--ease), border-color var(--ease);
     }
-    .play-btn:hover { background: var(--cta-hover); }
+    .play-btn:hover { background: var(--field-hover); border-color: var(--outline-2); }
     .stage-bar select { width: auto; height: 36px; padding: 0 12px; border-radius: var(--r-full); background: var(--surface); }
 
     .columns {
@@ -197,7 +199,7 @@
     }
     .col-head {
       display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px;
-      border-bottom: 1px solid var(--outline-v); flex: 0 0 auto;
+      border-bottom: 1px solid var(--outline); flex: 0 0 auto;
     }
     .col-head select {
       width: auto; max-width: 70%; height: 28px; padding: 0 4px; background: transparent;
@@ -256,7 +258,7 @@
     }
     .pillcard {
       padding: 10px 16px; display: flex; align-items: baseline; justify-content: space-between;
-      gap: 8px; min-width: 0; border-right: 1px solid var(--outline-v);
+      gap: 8px; min-width: 0; border-right: 1px solid var(--outline);
     }
     .pillcard:last-child { border-right: none; }
     .pillcard span { font-size: 11.5px; color: var(--on-3); white-space: nowrap; }
@@ -275,7 +277,7 @@
       transition: border-color var(--ease);
     }
     .strip button img { display: block; height: 48px; width: auto; }
-    .strip button.on { border-color: var(--cta); }
+    .strip button.on { border-color: transparent; outline: 2px solid var(--cta); outline-offset: 1px; }
     .strip button i {
       position: absolute; right: 0; bottom: 0; font-style: normal; font-size: 9px;
       font-family: var(--mono); color: #fff; background: rgba(31, 31, 31, 0.66); padding: 0 3px;
@@ -286,9 +288,59 @@
       flex: 1; display: grid; place-items: center; text-align: center; color: var(--on-3);
       font-size: 13px; border: 1px dashed var(--outline); border-radius: var(--r-md); padding: 24px;
     }
+    .run-steps {
+      flex: 0 0 auto; max-height: 214px; display: flex; flex-direction: column; overflow: hidden;
+      background: var(--surface); border-radius: var(--r-md); box-shadow: var(--shadow-1);
+    }
+    .run-head {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; cursor: pointer; user-select: none;
+    }
+    .steps-body { overflow: auto; padding: 0 14px 10px; }
+    /* 滚动时顶部渐隐，避免半行文字被硬切 */
+    .steps-body { mask-image: linear-gradient(to bottom, transparent 0, #000 12px); }
+    .run-steps.collapsed { max-height: none; }
+    .run-steps.collapsed .steps-body { display: none; }
+    .run-title { font-size: 12.5px; color: var(--on-2); }
+    .link-btn {
+      margin-left: auto; border: none; background: none; padding: 0;
+      font-family: inherit; font-size: 11.5px; color: var(--on-3); cursor: pointer;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .link-btn:hover { color: var(--on); }
+    .dots { display: inline-flex; gap: 3px; }
+    .dots i {
+      width: 5px; height: 5px; border-radius: 50%; background: var(--cta);
+      animation: dotPulse 1200ms ease-in-out infinite;
+    }
+    .dots i:nth-child(2) { animation-delay: 160ms; }
+    .dots i:nth-child(3) { animation-delay: 320ms; }
+    .dots.done i { animation: none; opacity: 0.35; }
+    @keyframes dotPulse {
+      0%, 100% { opacity: 0.25; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-2px); }
+    }
+
+    .steps { display: flex; flex-direction: column; }
+    .step {
+      display: flex; align-items: baseline; gap: 10px;
+      padding: 5px 0 5px 12px; border-left: 1px solid var(--outline-2);
+      font-size: 12.5px; color: var(--on);
+      animation: stepIn 280ms var(--ease) both;
+      transition: color 220ms var(--ease), opacity 220ms var(--ease);
+    }
+    .step.done { color: var(--on-3); }
+    .step.group { margin-top: 8px; font-weight: 500; border-left-color: var(--cta); }
+    .step .idx { color: var(--on-3); font-variant-numeric: tabular-nums; min-width: 16px; }
+    .step .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @keyframes stepIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
     .terminal {
       flex: 0 0 auto; max-height: 120px; overflow: auto; margin: 0;
-      background: var(--surface); color: var(--on-2); border: 1px solid var(--outline-v);
+      background: var(--surface); color: var(--on-2); border: 1px solid var(--outline);
       border-radius: var(--r-md); padding: 10px 12px; font-family: var(--mono);
       font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
     }
@@ -297,6 +349,11 @@
     .popover {
       position: absolute; right: 0; top: 40px; z-index: 30; width: 252px; background: var(--surface);
       border-radius: var(--r-lg); box-shadow: var(--shadow-2); padding: 16px;
+      animation: popIn 180ms var(--ease) both;
+    }
+    @keyframes popIn {
+      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+      to { opacity: 1; transform: none; }
     }
     .popover .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .popover .row:last-child { margin-bottom: 0; }
@@ -305,7 +362,7 @@
       padding: 6px 0; font-size: 12.5px; color: var(--on-2); cursor: pointer;
     }
     .switch-row input[type="checkbox"] {
-      appearance: none; -webkit-appearance: none; width: 44px; height: 26px; background: var(--outline);
+      appearance: none; -webkit-appearance: none; width: 44px; height: 26px; background: var(--outline-2);
       border-radius: var(--r-full); position: relative; cursor: pointer; margin: 0; flex-shrink: 0;
       transition: background var(--ease);
     }
@@ -319,15 +376,22 @@
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 
     .sheet {
-      position: absolute; inset: 0; z-index: 25; background: rgba(240, 244, 249, 0.72);
+      position: absolute; inset: 0; z-index: 25; background: rgba(244, 245, 247, 0.74);
       backdrop-filter: blur(4px); display: flex; padding: 24px;
+      animation: fadeIn 180ms var(--ease) both;
     }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     .sheet-card {
       margin: auto; width: min(920px, 100%); max-height: 100%; overflow: auto;
       background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-2); padding: 22px 24px;
+      animation: sheetIn 220ms var(--ease) both;
+    }
+    @keyframes sheetIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.985); }
+      to { opacity: 1; transform: none; }
     }
     table.metrics { width: 100%; border-collapse: collapse; font-size: 13px; }
-    table.metrics th, table.metrics td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--outline-v); }
+    table.metrics th, table.metrics td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--outline); }
     table.metrics th:first-child, table.metrics td:first-child { text-align: left; color: var(--on-2); font-weight: 400; }
     table.metrics thead th { font-size: 11.5px; color: var(--on-3); font-weight: 500; }
     table.metrics td.val { font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -349,6 +413,20 @@
     #cropCanvas { max-width: 100%; max-height: 190px; cursor: crosshair; display: block; border-radius: var(--r-xs); }
 
     .mono { font-variant-numeric: tabular-nums; }
+
+    .btn:active:not(:disabled), .play-btn:active, .method:active { transform: scale(0.98); }
+    .btn, .play-btn, .method, .icon-btn { transition: background var(--ease), color var(--ease), transform 90ms ease; }
+
+    .btn:focus-visible, .icon-btn:focus-visible, .play-btn:focus-visible, .method:focus-visible,
+    .seg button:focus-visible, .switch-row input:focus-visible, .strip button:focus-visible,
+    .slot-empty:focus-visible, .link-btn:focus-visible {
+      outline: 2px solid var(--on-2); outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .step, .popover, .sheet, .sheet-card, .dots i { animation: none !important; }
+      .btn, .play-btn, .method, .icon-btn { transition: none !important; }
+    }
 
     .hidden { display: none !important; }
 
@@ -509,7 +587,17 @@
       <div class="hint-line hidden" id="colHint"></div>
       <div class="pills hidden" id="pills"></div>
       <div class="strip hidden" id="strip"></div>
-      <pre class="terminal hidden" id="log"></pre>
+      <div class="run-steps hidden" id="logWrap">
+        <div class="run-head">
+          <span class="dots" id="runDots"><i></i><i></i><i></i></span>
+          <span class="run-title" id="runTitle">正在运行…</span>
+          <button class="link-btn" id="btnRawLog">原始日志</button>
+        </div>
+        <div class="steps-body">
+          <div class="steps" id="steps"></div>
+          <pre class="terminal hidden" id="log"></pre>
+        </div>
+      </div>
 
       <div class="sheet hidden" id="metricSheet">
         <div class="sheet-card">

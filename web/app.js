@@ -61,6 +61,7 @@ const state = {
   stripKey: "",
   sides: [],
   videoResult: null,
+  stepNo: 0,
 };
 
 /* ------------------------------------------------------------ utilities */
@@ -629,27 +630,87 @@ async function gotoFrame(index) {
 }
 
 /* ------------------------------------------------------------ run */
+const METHOD_NAMES = { threshold: "阈值", difference: "差分", learned: "U-Net" };
+const VERB_NAMES = { detect: "检测", track: "跟踪", evaluate: "评估", "detect-video": "逐帧推理" };
+
+function resetSteps() {
+  $("logWrap").classList.remove("hidden", "collapsed");
+  $("log").classList.add("hidden");
+  $("log").textContent = "";
+  $("steps").innerHTML = "";
+  $("runDots").classList.remove("done");
+  $("runTitle").textContent = "正在运行…";
+  state.stepNo = 0;
+}
+
+function addStep(text, cls = "") {
+  const host = $("steps");
+  const prev = host.lastElementChild;
+  // 新一步出现时，上一步转为"已完成"的灰字，跟录屏里的节奏一致
+  if (prev && !prev.classList.contains("group")) prev.classList.add("done");
+  const el = document.createElement("div");
+  el.className = `step ${cls}`.trim();
+  state.stepNo += 1;
+  const idx = document.createElement("span");
+  idx.className = "idx";
+  idx.textContent = String(state.stepNo).padStart(2, "0");
+  const body = document.createElement("span");
+  body.className = "txt";
+  body.textContent = text;
+  el.append(idx, body);
+  host.appendChild(el);
+  const scroller = $("steps").parentElement;
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  return el;
+}
+
+function stepLine(raw) {
+  const line = String(raw).trim();
+  if (!line) return;
+  if (line.startsWith("===")) {
+    addStep(line.replace(/=/g, "").trim(), "group");
+    return;
+  }
+  if (line.startsWith("> videosar ")) {
+    const verb = line.split(/\s+/)[2] || "";
+    const method = (line.match(/--method (\w+)/) || [])[1];
+    const label = VERB_NAMES[verb] || verb;
+    addStep(method ? `${label} · ${METHOD_NAMES[method] || method}` : label);
+    return;
+  }
+  if (/^IoU:/.test(line)) { addStep(line); return; }
+  if (/^\[退出码/.test(line)) {
+    const last = $("steps").lastElementChild;
+    if (last) last.classList.add("done");
+    return;
+  }
+  if (/失败|Error|Traceback|异常/.test(line)) addStep(line);
+}
+
 function streamJob(jobId, onDone) {
-  const log = $("log");
-  log.classList.remove("hidden");
-  log.textContent = "";
+  resetSteps();
   setBadge($("runBadge"), "运行中", "warn");
   const es = new EventSource(`/api/jobs/${jobId}/stream`);
   es.addEventListener("log", (ev) => {
     const { line } = JSON.parse(ev.data);
-    log.textContent += (log.textContent ? "\n" : "") + line;
-    log.scrollTop = log.scrollHeight;
+    $("log").textContent += (($("log").textContent) ? "\n" : "") + line;
+    stepLine(line);
   });
   es.addEventListener("done", (ev) => {
     es.close();
     const { ok, result } = JSON.parse(ev.data);
     setBadge($("runBadge"), ok ? "已完成" : "执行失败", ok ? "ok" : "err");
-    if (ok) setTimeout(() => $("log").classList.add("hidden"), 700);
+    $("runDots").classList.add("done");
+    $("runTitle").textContent = ok ? "已完成" : "执行失败";
+    $("steps").querySelectorAll(".step").forEach((el) => el.classList.add("done"));
+    // 跑完收起成一行，把画布高度还给结果
+    setTimeout(() => $("logWrap").classList.add("collapsed"), 1400);
     onDone(ok, result);
   });
   es.onerror = () => {
     es.close();
     setBadge($("runBadge"), "连接中断", "err");
+    $("runTitle").textContent = "连接中断";
   };
 }
 
@@ -698,6 +759,7 @@ async function runDetection() {
   } catch (err) {
     $("btnRun").disabled = false;
     setBadge($("runBadge"), "启动失败", "err");
+    $("logWrap").classList.remove("hidden");
     $("log").classList.remove("hidden");
     $("log").textContent = err.message;
   }
@@ -731,6 +793,7 @@ async function runVideoDetection() {
   } catch (err) {
     $("btnRun").disabled = false;
     setBadge($("runBadge"), "启动失败", "err");
+    $("logWrap").classList.remove("hidden");
     $("log").classList.remove("hidden");
     $("log").textContent = err.message;
   }
@@ -929,6 +992,14 @@ function bind() {
   });
 
   $("btnRun").addEventListener("click", runDetection);
+  $("btnRawLog").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    $("logWrap").classList.remove("collapsed");
+    $("log").classList.toggle("hidden");
+  });
+  $("logWrap").querySelector(".run-head").addEventListener("click", () => {
+    $("logWrap").classList.toggle("collapsed");
+  });
 
   $("viewSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-view]");
@@ -1001,7 +1072,7 @@ function bind() {
           settings: getSettings(),
         }),
       });
-      $("exportStatus").innerHTML = `<a class="btn btn-sm btn-primary" href="${res.download_url}">下载 ${esc(res.filename)}</a>`;
+      $("exportStatus").innerHTML = `<a class="btn btn-sm" href="${res.download_url}">下载 ${esc(res.filename)}</a>`;
     } catch (err) {
       $("exportStatus").textContent = err.message;
     }
