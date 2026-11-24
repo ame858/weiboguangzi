@@ -308,14 +308,14 @@ def load_trained(output, config):
                                recurrent_temporal=bool(config.get("recurrent_temporal", False)),
                                mixed_temporal=bool(config.get("mixed_temporal", False)),
                                task_alignment=bool(config.get("task_alignment", False)),
-                               line_context=bool(config.get("line_context", False)))
+                               line_context=bool(config.get("line_context", False)), backbone=config.get("backbone", "tiny"), pretrained_backbone=False)
         model.tile_inference = bool(config.get("tiled", False))
     elif config.get("architecture") in DENSE_ARCHITECTURES:
         model = DENSE_ARCHITECTURES[config["architecture"]](config["scale"])
     elif config.get("architecture") == "radar-center-map-ensemble":
         from snl_center import CenterMapEnsemble
 
-        model = CenterMapEnsemble(config["members"], config["input_channels"])
+        model = CenterMapEnsemble(config["members"], config["input_channels"], backbone=config.get("backbone", "tiny"))
     else:
         model = create_detector(config["scale"], architecture=config.get("architecture", "faster-rcnn"))
     if config.get("flip_inference"):
