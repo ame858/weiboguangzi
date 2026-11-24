@@ -219,5 +219,69 @@ class TestVideoSARRefactor(unittest.TestCase):
         self.assertGreaterEqual(float(mot_res["hota"]), 0.0)
 
 
+class TestCausalEvaluationContract(unittest.TestCase):
+    """Protocol rules carried over from the SNL research branch.
+
+    These are invariants, not model-quality checks: no detector may read future
+    frames, blocks must be split by time, and normalization statistics must come
+    from the training partition only.
+    """
+
+    def test_detector_is_strictly_causal(self) -> None:
+        """Changing any future frame must not alter detections on earlier frames."""
+        rng = np.random.default_rng(58)
+        frames = rng.integers(0, 170, (24, 32, 32), dtype=np.uint8)
+        check_frame = 12  # 0-based; frames after this index are "future"
+
+        baseline = detect_moving_shadows_baseline(frames)
+        tampered = frames.copy()
+        tampered[check_frame + 1:] = rng.integers(180, 255, tampered[check_frame + 1:].shape, dtype=np.uint8)
+        after = detect_moving_shadows_baseline(tampered)
+
+        def positions(dets):
+            return sorted((d.frame_id, d.x1, d.y1, d.x2, d.y2, d.score) for d in dets
+                          if d.frame_id <= check_frame)
+
+        self.assertEqual(positions(baseline), positions(after),
+                         "Future frames changed detections at or before the current frame")
+
+    def test_temporal_block_split_has_guard_gap(self) -> None:
+        """Frame-block splits must never overlap, and the guard gap is respected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frames_dir = root / "frames"
+            frames_dir.mkdir()
+            for i in range(1, 41):
+                cv2.imwrite(str(frames_dir / f"frame_{i:04d}.png"), np.full((16, 16), i, np.uint8))
+            train = SNLDataset(root, split="train", train_end_frame=24, guard_gap_frames=4,
+                               window_size=3, tile_size=16, tile_overlap=0)
+            test = SNLDataset(root, split="test", train_end_frame=24, guard_gap_frames=4,
+                              window_size=3, tile_size=16, tile_overlap=0)
+            self.assertEqual(max(train.original_frame_indices), 24)
+            self.assertEqual(min(test.original_frame_indices), 29)
+            self.assertTrue(set(train.original_frame_indices).isdisjoint(test.original_frame_indices))
+
+    def test_normalization_uses_training_statistics_only(self) -> None:
+        """Fitted normalization must ignore held-out frames entirely.
+
+        v2.0 currently only has stateless per-frame normalization (normalize_db),
+        so there is no fitted statistic to audit yet. This test guards the
+        contract once a train-fitted normalizer is added: it must expose fit over
+        training frames and apply without refitting on hold-out frames.
+        """
+        try:
+            from videosar.datasets.base import fit_normalization_stats, apply_normalization
+        except ImportError:
+            self.skipTest("v2.0 has no train-fitted normalizer yet; contract pending implementation")
+
+        train = np.array([[[10, 20], [30, 40]], [[20, 30], [40, 50]]], dtype=np.float32)
+        held_out = np.full((2, 2), 250.0, dtype=np.float32)
+        stats = fit_normalization_stats([train])
+        first = apply_normalization(held_out, stats).copy()
+        contaminated = fit_normalization_stats([train, held_out])
+        self.assertNotAlmostEqual(float(contaminated["mean"]), float(stats["mean"]))
+        np.testing.assert_array_equal(apply_normalization(held_out, stats), first)
+
+
 if __name__ == "__main__":
     unittest.main()

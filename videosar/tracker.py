@@ -157,20 +157,22 @@ def detect_moving_shadows_baseline(
     min_area_px: int = 24,
     max_area_px: int = 1800,
 ) -> List[BoxDetection]:
-    """Temporal median-background shadow detector baseline for smoke testing.
+    """Causal prefix-median background shadow detector baseline.
 
-    Because static building shadows persist in the temporal median, subtracting
-    ``frame`` from ``median_bg`` selectively highlights moving dark shadows while
-    suppressing stationary clutter and static building distractors.
+    At frame t the background is the median of frames 0..t only, so no future
+    frame can influence a detection. Static building shadows persist in the
+    prefix median and are suppressed; moving dark shadows appear as deficits.
     """
     if frames.ndim != 3 or frames.shape[0] < 2:
         raise ValueError("Expected frames array of shape (T, H, W) with T >= 2.")
 
-    bg_median = np.median(frames, axis=0).astype(np.float32)
     detections: List[BoxDetection] = []
+    history: List[np.ndarray] = []
 
     for t_idx in range(frames.shape[0]):
-        # Positive deficit where current frame is significantly darker than median bg
+        history.append(frames[t_idx])
+        bg_median = np.median(np.stack(history), axis=0).astype(np.float32)
+        # Positive deficit where current frame is significantly darker than causal bg
         deficit = bg_median - frames[t_idx]
         smooth = cv2.GaussianBlur(deficit, (5, 5), 1.0)
         std = float(np.std(smooth)) + 1e-6
