@@ -492,11 +492,18 @@ async function renderQuad() {
     ["4 · 质心 4× 放大", "ROI ×4"],
   ];
   $("quad").innerHTML = data.panels
-    .map((src, i) => `
+    .map((src, i) => {
+      // The difference view has no reference frame yet; a black tile reads as a bug.
+      const blank = i === 1 && data.index === 0;
+      const body = blank
+        ? `<div class="tile-empty">首帧无历史参考帧<br />切到第 2 帧后可见</div>`
+        : `<img src="${src}" alt="" />`;
+      return `
       <figure>
         <figcaption><span>${panels[i][0]}</span><span>${panels[i][1]}</span></figcaption>
-        <div class="col-img"><img src="${src}" alt="" /></div>
-      </figure>`)
+        <div class="col-img">${body}</div>
+      </figure>`;
+    })
     .join("");
   $("quad").classList.toggle("pixelated", $("dispPixelated").checked);
 
