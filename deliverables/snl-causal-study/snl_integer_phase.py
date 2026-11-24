@@ -23,7 +23,8 @@ IDENTITY = (0, 0)
 PHASES = {"single": (IDENTITY,), "same_phase": (IDENTITY, (8, 0), (0, 8), (8, 8)),
           "mixed_phase": (IDENTITY, (9, 0), (0, 9), (9, 9))}
 MARGIN = 24
-PER_VIEW = 2048
+PER_VIEW = 8192
+REFINE_PER_VIEW = 2048
 BUDGET = 1024
 REFINE_IOU = 0.25
 BLENDS = (0.0, 0.5, 1.0)
@@ -41,7 +42,8 @@ def translate(tensor, dx, dy):
 
 def dense_view(model, output, dx, dy):
     probability = output[0].sigmoid().flatten()
-    strength, index = probability.topk(4 * PER_VIEW)
+    capacity = max(4 * PER_VIEW, int((probability >= 0.005).sum()))
+    strength, index = probability.topk(capacity)
     boxes = center_boxes_at(model, output, index, HEIGHT, WIDTH).cpu().numpy()
     boxes -= np.array([dx, dy, dx, dy], dtype=np.float32)
     np.clip(boxes, 0, (WIDTH, HEIGHT, WIDTH, HEIGHT), out=boxes)
@@ -49,7 +51,8 @@ def dense_view(model, output, dx, dy):
     selected = np.flatnonzero(valid)[:PER_VIEW]
     if len(selected) != PER_VIEW:
         raise ValueError("A translated image has too few interior proposals for the common per-view budget")
-    return boxes[selected], strength.cpu().numpy()[selected]
+    scores = strength.cpu().numpy()
+    return boxes[selected], scores[selected], boxes[valid & (scores >= 0.005)]
 
 
 def merged_view(views, shifts, iou):
@@ -57,24 +60,36 @@ def merged_view(views, shifts, iou):
     scores = np.concatenate([views[shift][1] for shift in shifts])
     order = np.argsort(-scores, kind="stable")
     boxes, scores = boxes[order], scores[order]
-    priority = torch.arange(len(boxes), 0, -1, dtype=torch.float32)
-    kept = nms(torch.from_numpy(boxes), priority, iou).numpy()
+    # Later boxes cannot suppress an earlier box in greedy NMS.
+    for size in range(4096, len(boxes) + 1, 4096):
+        priority = torch.arange(size, 0, -1, dtype=torch.float32)
+        kept = nms(torch.from_numpy(boxes[:size]), priority, iou).numpy()
+        if len(kept) >= BUDGET:
+            break
     return boxes[:BUDGET], boxes[kept[:BUDGET]], scores[kept[:BUDGET]]
 
 
 def refine_geometry(reference, views, shifts):
     total = reference.copy()
     votes = np.ones((len(reference), 1), dtype=np.float32)
+    alternatives = [reference]
     for shift in shifts:
         if shift == IDENTITY or not len(reference):
             continue
-        boxes, scores = views[shift]
+        boxes, scores, _ = views[shift]
+        boxes = boxes[:REFINE_PER_VIEW]
+        scores = scores[:REFINE_PER_VIEW]
         overlap = box_iou(reference, boxes)
         best = overlap.argmax(axis=1)
         allowed = interior(reference) & (overlap[np.arange(len(reference)), best] >= REFINE_IOU) & (scores[best] >= 0.005)
         total[allowed] += boxes[best[allowed]]
         votes[allowed] += 1
-    return total / votes, int((votes > 1).sum())
+        alternative = reference.copy()
+        alternative[allowed] = boxes[best[allowed]]
+        alternatives.append(alternative)
+    averaged = total / votes
+    alternatives.extend(reference + blend * (averaged - reference) for blend in BLENDS if blend)
+    return averaged, int((votes > 1).sum()), np.stack(alternatives, axis=1)
 
 
 @torch.inference_mode()
@@ -96,7 +111,10 @@ def predict(model, sequence, ids, raw, release, nms_iou):
         geometry[index] = {name: refine_geometry(release[index][0], views, shifts) for name, shifts in PHASES.items()}
         merged = {name: merged_view(views, shifts, nms_iou) for name, shifts in PHASES.items()}
         common_count = min(len(post) for _, post, _ in merged.values())
-        dense[index] = {name: (pre[:common_count], post[:common_count], scores[:common_count])
+        if common_count != BUDGET:
+            raise ValueError(f"Frame {index}: NMS supplied {common_count} of the {BUDGET} required candidates")
+        dense[index] = {name: (pre[:common_count], post[:common_count], scores[:common_count],
+                               np.concatenate([views[shift][2] for shift in PHASES[name]]))
                         for name, (pre, post, scores) in merged.items()}
         common_counts[index] = common_count
     return geometry, dense, common_counts
@@ -110,7 +128,7 @@ def refined(geometry, release, name, blend):
 def dense_predictions(dense, name, *, threshold=None, counts=None):
     out = {}
     for index, views in dense.items():
-        _, boxes, scores = views[name]
+        _, boxes, scores, _ = views[name]
         count = int((scores >= threshold).sum()) if counts is None else counts[index]
         if count > len(boxes):
             raise ValueError("A dense phase arm did not supply the requested number of outputs")
@@ -150,13 +168,22 @@ def report(geometry, dense, common_counts, release, truth, points, scope):
             metrics_rows[name, variant] = counts
         coverage = []
         for index, targets in restricted.items():
-            pre, post, _ = dense[index][name]
+            pre, post, _, above_floor = dense[index][name]
+            _, voted, options = geometry[index][name]
+            # One output slot can take at most one alternate geometry and match at most one truth box.
+            edges = (box_iou(options.reshape(-1, 4), truth[index]) >= 0.50).reshape(
+                len(options), options.shape[1], len(truth[index])).any(axis=1)
+            post_coverage = count_pairs(box_iou(post, targets) >= 0.50)
             coverage.append(dict(split=scope, arm=name, annotation_id=index, truth=len(targets), kept=common_counts[index],
                                  pre_nms=count_pairs(box_iou(pre, targets) >= 0.50),
-                                 post_nms=count_pairs(box_iou(post, targets) >= 0.50),
-                                 geometry_votes=geometry[index][name][1]))
+                                 post_nms=post_coverage, dense_equal_output_oracle=min(post_coverage, fixed_counts[index]),
+                                 floor_only_candidates=len(above_floor),
+                                 floor_only_oracle=count_pairs(box_iou(above_floor, targets) >= 0.50),
+                                 geometry_slot_oracle=count_pairs(edges), geometry_votes=voted))
         coverage_rows.extend(coverage)
-        results[name] = result | {key: sum(row[key] for row in coverage) for key in ("pre_nms", "post_nms", "geometry_votes")}
+        audit_keys = ("pre_nms", "post_nms", "dense_equal_output_oracle", "floor_only_candidates", "floor_only_oracle",
+                      "geometry_slot_oracle", "geometry_votes")
+        results[name] = result | {key: sum(row[key] for row in coverage) for key in audit_keys}
     variant_names = ("geometry_only", "dense_frozen", "dense_equal_output")
     results["paired_phase_comparison"] = {variant: paired_block_f1(metrics_rows["mixed_phase", variant],
                                                                    metrics_rows["same_phase", variant])
@@ -171,7 +198,8 @@ def run(source, output, ffmpeg):
         raise ValueError("This comparison requires the original local-peak center checkpoint")
     _, cal_ids, dev_ids = PROFILES["prospective"]
     settings = dict(config=config, video_sha256=sha_file(VIDEO), phases=PHASES, margin=MARGIN, per_view=PER_VIEW,
-                    budget=BUDGET, geometry_match_iou=REFINE_IOU, geometry_blends=BLENDS, match_iou=0.50,
+                    budget=BUDGET, geometry_per_view=REFINE_PER_VIEW, geometry_match_iou=REFINE_IOU,
+                    geometry_blends=BLENDS, match_iou=0.50,
                     calibration_ids=list(cal_ids), development_ids=list(dev_ids))
     gray = load_gray(source, ffmpeg)
     features = feature_cache(source, gray, max(dev_ids), CausalFeatures("stacked"))

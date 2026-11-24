@@ -1,2 +1,9 @@
-numpy>=1.26,<3
-Pillow>=10,<13
+numpy>=1.24
+scipy>=1.10
+opencv-python>=4.8
+PyYAML>=6.0
+# Optional GPU training & ray-tracing backends:
+# torch>=2.1
+# radarsimpy
+
+# Retained for legacy imaging/preview modules:/nPillow>=10,<13/n

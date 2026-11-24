@@ -835,3 +835,134 @@ $peruVideo = Join-Path $iceyeRoot 'ICEYE_6QE022_20260331T033546Z_9417828_X44_SLE
 $scotlandVideo = Join-Path $iceyeRoot 'ICEYE_GCVEE1_20260318T213827Z_9335125_X61_SLEDF_VID.mp4'
 & $studyPy deliverables\snl-causal-study\snl_external_grid_ranking.py --paired-negatives --fresh-video $peruVideo --fresh-video $scotlandVideo --output 'runs\snl-causal-study\external-sar\grid-paired-replay' --ffmpeg $f
 ```
+
+## 实测整像素相位对照
+
+固定七帧交付权重与对比度增强，用真实 SNL 灰度序列做无插值的整数平移。单视图保留原网格。同相位组使用 `(0,0)、(8,0)、(0,8)、(8,8)`，交错组对应使用 `(0,0)、(9,0)、(0,9)、(9,9)`。后两组推理次数相同。各通道使用相同位移，复制边缘，保持原画布，框坐标还原至原生像素。网络的三个分支步长为 2、4、8，整图归一化统计也可能随平移变化。实验衡量整个检测器的平移响应。
+
+只改几何的对照保留交付版逐帧输出和置信度，选择能与每个原框重叠的平移框做坐标投票。密集对照使用距画布边缘至少 24 像素的目标中心，每个视图取前 8,192 个候选框，三组在去重前后分别取同样的 1,024 个框。另按原交付版每帧的内区框数比较固定输出。只在 310–323 帧选择几何混合权重和密集阈值，写入冻结文件后在 332–379 帧评分。原始相位局部峰值框与归档坐标和分数逐帧核对，复现交付版的 102 个命中和 176 个误报。
+
+| 视图 | 内区仅设 0.005 底分的匹配上限／429 | 内区 1,024 候选，NMS 前／后覆盖 | 内区等输出命中／261 个输出 | 内区等输出 F1 | 全图只改几何 F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 单视图 | 346 | 280／245 | 92 | 26.67% | 28.06% |
+| 同相位四视图 | 350 | 234／245 | 96 | 27.83% | 28.06% |
+| 交错四视图 | 355 | 242／252 | 90 | 26.09% | 26.13% |
+
+内区候选覆盖用真值做一对一匹配。NMS 前按原分数取前 1,024，NMS 后从较大的合并池抑制重叠框再取前 1,024，两列衡量两种入池方式。交错组仅设底分时覆盖 355/429，即 82.75%。限制为 1,024 个去重后候选时覆盖 252/429，即 58.74%。交错组的实际等输出 F1 比同相位组低 1.74 个百分点，六帧配对区间为 [−4.95，+0.82] 个百分点。
+
+逐框从原框、合格平移框和两种坐标投票结果中选最有利几何，每个原输出槽位最多保留一个框，全图真值辅助上限为 102、103、120 个命中。交错组冻结投票实际命中 95 个，全图 F1 比同相位组低 1.93 个百分点，配对区间为 [−3.70，−0.28] 个百分点。多相位带来的候选增量未转化为稳定检出。正式盲测时段仍封存。[指标及冻结选择](../../runs/snl-causal-study/prospective/integer-phase-full-budget/comparison.json) · [逐帧候选上限](../../runs/snl-causal-study/prospective/integer-phase-full-budget/coverage-rows.csv)
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_integer_phase.py --source $run --output 'runs\snl-causal-study\prospective\integer-phase-replay' --ffmpeg $f
+```
+
+## 连续帧检测前跟踪、中心与测速
+
+以第 242 帧为配准锚点，从 242–289 帧初始化逐像素背景中位数和稳健噪声尺度。固定背景保持初值，在线背景先用历史状态形成当前有符号残差，再限幅更新背景和噪声尺度。空间核分别为 5×9 和 25×29，响应在半分辨率网格累积。移动分支从 224 个非零速度中取最强的连续 20 帧路径，静止对照使用同一窗口。每条路径必须有 20 个有效样本。局部峰值提取、每帧 256 个候选预算和置信度门槛都在时空积分之后。另用同一冻结七帧模型的稠密热图做输入，配准其输出热图，并比较当前热图、静止累积、纯运动累积及当前热图与运动累积各占一半的融合。
+
+从 310–323 帧按一对一中心距 ≤5 像素选择阈值，冻结后在 332–379 帧复核。中心为主指标。TBD 分支用固定的 8×15 像素框计算辅助 IoU ≥0.50。原交付版用自身预测框按两个指标重算。等输出对照复用每帧原交付版的输出数量，共 278 个框。将配准截断到校准末帧，82 帧共享前缀的矩阵完全一致。有限窗递推用暴力逐路径求和验证，并在已知 `(2,−2)` 像素／观测的合成响应上复现其端点和速度。
+
+| SNL 开发段分支 | 冻结中心 F1 | 等输出中心命中／449 | 等输出中心 F1 | 等输出 IoU F1 |
+| --- | ---: | ---: | ---: | ---: |
+| 原交付版 | 43.19% | 157 | 43.19% | 28.06% |
+| 固定背景单帧残差 | 0.16% | 0 | 0.00% | 0.00% |
+| 在线背景单帧残差 | 6.97% | 33 | 9.08% | 4.13% |
+| 在线背景 20 帧运动积分 | 4.91% | 23 | 6.33% | 1.93% |
+| 当前七帧模型稠密热图 | 39.05% | 147 | 40.44% | 19.26% |
+| 稠密热图 20 帧运动积分 | 8.30% | 38 | 10.45% | 4.95% |
+| 当前热图与 20 帧运动积分融合 | 26.57% | 145 | 39.89% | 18.43% |
+
+用 20 帧循环块做 3,000 次配对重采样，等输出融合与当前热图的中心 F1 差为 −0.55 个百分点，95% 区间为 [−3.47，+2.66] 个百分点。原交付版按中心口径的开发查准率、召回率为 56.47%、34.97%，按原 IoU 口径为 36.69%、22.72%。两项口径同时保留。
+
+速度以配准网格的像素／观测输出。社区框没有独立轨迹编号，取逐帧 9 像素门内两侧唯一的连接，拟合误差不超过 2 像素才作为代理。校准和开发均无 12 帧合格代理。5 帧敏感性核验在开发有 9 个可用端点，热图融合组等输出命中其中 2 个，平均速度大小误差 2.21 像素／观测，平均向量误差 2.39 像素／观测。样本量不足以判定实测速度精度。[开发结果](../../runs/snl-causal-study/prospective/track-before-detect-heat-speed/comparison.json) · [中心和速度输出](../../runs/snl-causal-study/prospective/track-before-detect-heat-speed/center-predictions.csv) · [速度代理核验](../../runs/snl-causal-study/prospective/track-before-detect-heat-speed/matched-velocities.csv)
+
+### 外部在线背景与分数自适应
+
+用 ICEYE 每段 25 个原生观测，在前 5 个观测初始化场景背景，积累 15 个观测，评分最后 6 个观测。每处四个 192×192 窗口保持相同背景和运动路径，分别生成原始、名义 5 级和 15 级暗化序列。阴影从暖机结束后开始连续注入。利马校准时每 24 个无注入窗最多允许 24 个输出。冻结点在普卡尔帕和苏格兰南部的全部测试窗均无输出。
+
+| 两场逐窗等 8 个输出 | 5 级中心命中／144 | 15 级中心命中／144 | 中心 F1 |
+| --- | ---: | ---: | ---: |
+| 固定背景单帧 | 17 | 125 | 19.72% |
+| 在线背景单帧 | 21 | 115 | 18.89% |
+| 固定背景 15 帧运动积分 | 41 | 126 | 23.19% |
+| 在线背景 15 帧运动积分 | 52 | 125 | 24.58% |
+
+在线运动积分相对固定背景的弱阴影召回增 7.64 个百分点。按每景四个空间窗配对重采样 10,000 次，95% 区间为 [1.39，12.50] 个百分点，种子 498。在线运动积分匹配的 177 个注入中心中，平均速度大小误差为 0.17 像素／观测，平均向量误差为 0.27 像素／观测。仅弱注入的 52 个命中，平均向量误差为 0.37 像素／观测。注入使用的恒定速度来自搜索网格，误差条件于已命中样本。[跨场景等输出结果](../../runs/snl-causal-study/external-sar/tbd-online-fixed-output/comparison.json) · [注入速度复核](../../runs/snl-causal-study/external-sar/tbd-online-fixed-output/matched-velocities.csv)
+
+以原始无注入窗口对同一目标路径重复评分，复现了旧实验全部 2,304 条逐窗记录和速度记录。两种运动积分在等 8 个输出下，均无候选提前命中弱注入位置。弱阴影净增分别为 41、52 个，差为 11 个，95% 空间窗配对区间为 [2，18] 个。强阴影净增分别为 126、125 个，差为 −1 个，区间为 [−11，8] 个。净增为注入后新增命中减去失去的命中。[跨场景原图配对复算](../../runs/snl-causal-study/external-sar/tbd-online-placebo/comparison.json)
+
+另在丹佛和墨西哥城复核当前帧候选分数的中位数和 MAD 归一化。沿用利马标定规则，在线运动积分从 301 个无注入输出降至 10 个，弱命中由 3/144 降为 0/144。扣除静止响应的分支从 371 个无注入输出降至 70 个，弱命中由 5/144 降为 3/144。分数归一化降低了一些背景输出，弱目标仍未达到可用检出率。跨场景结论基于实测背景与人工注入轨迹。[分数自适应复核](../../runs/snl-causal-study/external-sar/tbd-online-score-normalization/comparison.json)
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_track_before_detect.py --source $run --learned-heat --output 'runs\snl-causal-study\prospective\tbd-replay' --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_tbd_external.py --output 'runs\snl-causal-study\external-sar\tbd-replay' --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_tbd_external.py --compare-normalization --output 'runs\snl-causal-study\external-sar\tbd-normalization-replay' --ffmpeg $f
+```
+
+## 短窗检测前跟踪
+
+复用同一七帧热图、配准、速度网格和逐帧候选预算，比较连续 5、10、20 帧累积。各组在相同 14 帧校准段独立冻结阈值。完整路径有效区随窗口改变，三组的单帧热图在开发段等输出评价逐帧一致。
+
+| 累积窗 | 纯热图 TBD 中心命中／449 | 纯热图 TBD 中心 F1 | 与当前热图融合后的中心 F1 |
+| --- | ---: | ---: | ---: |
+| 5 帧 | 96 | 26.41% | 40.44% |
+| 10 帧 | 59 | 16.23% | 39.89% |
+| 20 帧 | 38 | 10.45% | 39.89% |
+
+以上三组每个开发帧与交付版同数，共 278 个输出。从 20 帧缩至 5 帧时，纯 TBD 的中心 F1 差为 +15.96 个百分点，20 帧循环块的 95% 配对区间为 [12.40，19.38] 个百分点。5 帧融合与同口径当前热图都命中 147 个中心，IoU 命中分别为 68、70 个，中心 F1 差为 0.00 个百分点，95% 区间为 [−2.26，1.77]。原交付版按中心口径命中 157 个，F1 为 43.19%。[5 帧结果](../../runs/snl-causal-study/prospective/track-before-detect-window-5/comparison.json) · [10 帧结果](../../runs/snl-causal-study/prospective/track-before-detect-window-10/comparison.json) · [20 帧结果](../../runs/snl-causal-study/prospective/track-before-detect-heat-speed/comparison.json)
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_track_before_detect.py --source $run --learned-heat --window 5 --output 'runs\snl-causal-study\prospective\tbd-5-replay' --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_track_before_detect.py --source $run --learned-heat --window 10 --output 'runs\snl-causal-study\prospective\tbd-10-replay' --ffmpeg $f
+```
+
+## 连续轨迹独立复标
+
+连续轨迹包提供训练段 275–296 帧、开发段 332–353 帧和 358–379 帧。每段 22 帧，共 66 张原生灰度 PNG、3 个逐像素验证的无损 MP4。包内只提供源画面、按帧清单和 LabelMe 说明。同一段内用 `group_id` 串联同一阴影，部分遮挡记录在框的 `occluded` 标志中，完全遮挡记录在 `occlusions.csv`。短片允许查看段内前后画面，回收轨迹用于离线独立验收。返还校验覆盖帧文件名与尺寸、缺失空帧、重复 ID 和遮挡冲突。实际标注待回收。[连续轨迹独立复标包](../../runs/snl-causal-study/independent-track-review.zip)
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_track_review.py --folder 'runs\snl-causal-study\track-review-replay' --ffmpeg $f
+& $studyPy deliverables\snl-causal-study\snl_track_review.py --labels 'D:\path\returned-track-labels.zip'
+```
+
+## 同次采集的 UInt16 与 MP4 对照
+
+利马同次采集的 `VID.tif` 有 25 个 UInt16 幅度波段，全文件 663,185,824 字节。读取一个 512×512 原生瓦片的全部波段和三个全景概览波段，所选范围合计 9,575,266 字节。每个响应核对来源 ETag、字节区间和长度，缓存和输出数组均验证 SHA-256。两个产品的像素长宽不同。用最初 5 个观测中的 3 个估计全景仿射，再用最初 5 个观测微调局部对齐。在 MP4 的 `(855,928,192,112)` 窗口得到完整的 TIFF 共同覆盖。全景估计有 1,964 个内点，校准后 20 帧的空间 Spearman 相关中位数为 0.839，25 个观测在逐帧时间残差比较中均最佳匹配同帧。[读取回执](../../runs/snl-causal-study/external-sar/lima-vid-cog-window-paired/receipt.json) · [对齐记录](../../runs/snl-causal-study/external-sar/lima-vid-cog-comparison/alignment.json)
+
+用最初 5 帧把对齐后的对数幅度映射到公共灰度尺度，保留浮点值。三组采用同一注入轨迹。第一组在 TIFF 浮点幅度上注入，第二组再舍入到整 8 位，第三组在官方 MP4 解码后注入并舍入到整 8 位。各组同样以 15 帧在线背景 TBD 处理，最后 6 个观测每窗保留前 8 个输出。用四组已知轨迹重复，每个暗化强度有 48 个注入中心。[逐窗记录](../../runs/snl-causal-study/external-sar/lima-vid-cog-comparison/case-rows.csv)
+
+| 名义暗化量 | TIFF 浮点中心命中／48 | 同一 TIFF 舍入 8 位 | 官方 MP4 |
+| --- | ---: | ---: | ---: |
+| 0.5 级 | 3 | 3 | 0 |
+| 2 级 | 5 | 5 | 0 |
+| 5 级 | 13 | 13 | 11 |
+
+0.5 和 2 级下，两条 TIFF 分支逐窗中心和 IoU 命中数均相同，且命中都来自同一组注入轨迹。5 级下，两组总中心命中相同，浮点分支多 1 个 IoU 命中。0.5 级实际中心暗化均值为 0.500、0.458、0.417 个灰度级。单个地区的同一录像背景上，TIFF 和官方 MP4 的命中数有差异，单独舍入最终灰度的对照未出现同样差异。结果衡量已配准产品上的人工注入，原有真实阴影待独立轨迹复标。[结果及参数](../../runs/snl-causal-study/external-sar/lima-vid-cog-comparison/comparison.json)
+
+用各自的无注入候选匹配同一目标路径，逐窗完全复现上表。两个 TIFF 分支均有 2 个注入前已匹配的中心，三个剂量的净增命中都为 1、3、11 个。官方 MP4 注入前无匹配，三个剂量净增 0、0、11 个。考虑原始画面中的已有匹配，5 级下三组净增相同。[中心窗口原图配对复算](../../runs/snl-causal-study/external-sar/lima-vid-cog-placebo/comparison.json)
+
+```powershell
+$tileRun = 'runs\snl-causal-study\external-sar\lima-window-replay'
+& $studyPy deliverables\snl-causal-study\snl_vid_cog_window.py --output $tileRun
+& $studyPy deliverables\snl-causal-study\snl_vid_cog_comparison.py --source $tileRun --output 'runs\snl-causal-study\external-sar\lima-formats-replay' --ffmpeg $f
+```
+
+## 视频压缩与亮度范围对照
+
+利马官方 MP4 的码流是 MPEG-4 Part 2 Simple Profile（`mp4v`），1 fps，只有 I/P 帧。逐帧 VOP 起始量化参数的中位数为 4。本实验从同一次采集的已对齐瓦片取西、东两个 80×112 像素窗口，与上一轮中心窗口间隔 8 像素。复用同一空间变换。两个新窗口在校准后的帧上，TIFF 与 MP4 的空间 Spearman 相关中位数为 0.927、0.851。
+
+TIFF 的灰度按前 5 帧映射到公共尺度，先注入已知轨迹，再生成整 8 位亮度。比较未压缩、固定 q2／q4／q8 的 MPEG-4 编解码，以及将 0–255 映射到 16–235 后再展开的亮度往返。有限范围同时做无压缩和 q4 两组。受控编码直接写入并读取 Y 平面，使用 12 帧 GOP 和零 B 帧。无损基准逐像素一致，所有分支注入前的 5 帧暖机逐像素一致。官方 MP4 作为解码后注入的产品参照。
+
+每窗沿用 15 帧在线背景 TBD。对最后 6 帧逐帧保留 4 个输出，四组轨迹共给出每剂量 96 个目标中心。对无注入的同产品、同帧候选，也按同一注入轨迹的位置做匹配，逐目标统计原有命中、新增命中和失去的命中。两个窗口共享同一采集背景。
+
+| 名义暗化 | 全范围无压缩 | 有限范围无压缩 | 全范围 q4 | 有限范围 q4 | 官方 MP4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0.5 级净增中心命中 | +1 | +1 | +1 | −2 | 0 |
+| 2 级净增中心命中 | +1 | +2 | +2 | 0 | 0 |
+| 5 级净增中心命中 | +4 | +5 | +7 | +2 | +4 |
+
+净增为新增命中数减去失去的命中数。官方 MP4 在 0.5 和 2 级各匹配 10 个中心，全部在同位置的空白对照中已经命中。5 级的全范围 q4 匹配 20 个中心，空白对照匹配 13 个，净增 7 个。有限范围 q4 匹配 16 个，空白对照匹配 14 个，净增 2 个。全范围 q4 的 0.5 级注入在中心 3×3 邻域的实际平均暗化由 0.434 级降至 0.045 级。q2、q4、q8 的固定预算检出随量化等级有不同变化，有限范围与编码的联合效应主要来自东窗。这些数值仅用于两个固定窗口的产品处理归因。[全部逐窗计数](../../runs/snl-causal-study/external-sar/lima-vid-codec-luma/case-rows.csv) · [编码与亮度对照](../../runs/snl-causal-study/external-sar/lima-vid-codec-luma/comparison.json)
+
+```powershell
+& $studyPy deliverables\snl-causal-study\snl_vid_codec_ablation.py --output 'runs\snl-causal-study\external-sar\lima-codec-replay' --ffmpeg $f
+```
