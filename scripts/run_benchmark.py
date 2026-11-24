@@ -14,17 +14,21 @@ import argparse
 from pathlib import Path
 import sys
 
+import numpy as np
+
 # Ensure repository root is importable when executed directly as a script
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from videosar.config import DatasetConfig, MWPConfig, SimulationConfig, VideoSARConfig
+from videosar.datasets.base import load_grayscale_frame
 from videosar.datasets.snl import SNLDataset
 from videosar.datasets.vsmb import VSMBDataset
 from videosar.experiment import ExperimentRunner
 from videosar.simulation import VideoSARSimulator
 from videosar.tracker import ByteTrackLite, detect_moving_shadows_baseline
+from videosar.metrics import BoxDetection
 
 
 def _run_tracker_on_detections(detections, num_frames: int):
@@ -36,6 +40,43 @@ def _run_tracker_on_detections(detections, num_frames: int):
     for fid in range(1, num_frames + 1):
         tracked.extend(tracker.update(fid, by_frame.get(fid, [])))
     return tracked
+
+
+def evaluate_real_dataset(dataset, runner: ExperimentRunner, split_prefix: str, dataset_name: str):
+    """Run the baseline detector + tracker on every sequence of a real benchmark.
+
+    Each sequence is evaluated as its own ``domain="real"`` split so that no
+    frames from different videos are ever pooled. Ground-truth boxes come from
+    the dataset's frame-indexed annotations (never from the detector).
+    """
+    results = []
+    for seq in dataset.sequences:
+        frames = np.stack(
+            [load_grayscale_frame(p, normalize_db=dataset.normalize_db) for p in seq.frame_paths],
+            axis=0,
+        )
+        num_frames = frames.shape[0]
+        if num_frames < 2:
+            continue
+
+        ground_truths: list[BoxDetection] = []
+        for frame_id in range(1, num_frames + 1):
+            ground_truths.extend(seq.annotations_by_frame.get(frame_id, []))
+
+        raw_dets = detect_moving_shadows_baseline(frames)
+        tracked = _run_tracker_on_detections(raw_dets, num_frames)
+        res = runner.evaluate_split(
+            split_name=f"{split_prefix}_{seq.sequence_id}",
+            domain="real",
+            predictions=raw_dets,
+            ground_truths=ground_truths,
+            num_frames=num_frames,
+            tracked_predictions=tracked,
+        )
+        results.append((seq.sequence_id, res))
+
+    artifacts = runner.save_artifacts()
+    return results, artifacts
 
 
 def main() -> int:
@@ -99,12 +140,30 @@ def main() -> int:
 
     if args.mode == "eval-vsmb":
         ds = VSMBDataset(root_dir=args.data_root, split="test", tile_size=1024, tile_overlap=0)
-        print(f"Loaded VSMB test split: {len(ds.sequence_ids)} sequences, {len(ds)} windows.")
+        results, artifacts = evaluate_real_dataset(ds, runner, "vsmb", "vsmb")
+        if not results:
+            print(f"[eval-vsmb] no test sequences with >=2 frames under {args.data_root}")
+        for seq_id, res in results:
+            print(
+                f"[eval-vsmb:{seq_id}] mAP@0.5={res['map_50']:.4f} | "
+                f"mAP@0.3={res['map_30']:.4f} | FA/frame={res['fa_per_frame_50']:.3f} | "
+                f"MOTA={res['mot']['mota']:.4f}"
+            )
+        print(f"Saved artifacts to: {artifacts['metrics'].parent}")
         return 0
 
     if args.mode == "eval-snl":
         ds = SNLDataset(root_dir=args.data_root, split="test")
-        print(f"Loaded SNL test split: {len(ds.original_frame_indices)} frames, {len(ds)} windows.")
+        results, artifacts = evaluate_real_dataset(ds, runner, "snl", "snl")
+        if not results:
+            print(f"[eval-snl] no test frames under {args.data_root}")
+        for seq_id, res in results:
+            print(
+                f"[eval-snl:{seq_id}] mAP@0.5={res['map_50']:.4f} | "
+                f"mAP@0.3={res['map_30']:.4f} | FA/frame={res['fa_per_frame_50']:.3f} | "
+                f"MOTA={res['mot']['mota']:.4f}"
+            )
+        print(f"Saved artifacts to: {artifacts['metrics'].parent}")
         return 0
 
     return 0

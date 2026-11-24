@@ -142,6 +142,51 @@ class TestVideoSARRefactor(unittest.TestCase):
             self.assertEqual(min(snl_test.original_frame_indices), 23)
             self.assertTrue(len(snl_test) > 0)
 
+    def test_eval_vsmb_writes_real_only_blind_metrics(self) -> None:
+        """eval-vsmb logic must populate real_blind_eval and leave synthetic_ablation empty."""
+        import importlib.util
+
+        scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
+        spec = importlib.util.spec_from_file_location("run_benchmark", scripts_dir / "run_benchmark.py")
+        self.assertIsNotNone(spec and spec.loader)
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vsmb_root = root / "vsmb"
+            # 4 mini sequences so the 70/15/15 split yields a non-empty test partition.
+            for s_idx in range(4):
+                seq_dir = vsmb_root / f"seq_{s_idx:02d}"
+                img_dir = seq_dir / "img1"
+                gt_dir = seq_dir / "gt"
+                img_dir.mkdir(parents=True)
+                gt_dir.mkdir(parents=True)
+                gt_rows = []
+                for f in range(1, 9):
+                    frame = np.full((128, 128), 100 + s_idx * 10, dtype=np.uint8)
+                    cv2.imwrite(str(img_dir / f"{f:06d}.png"), frame)
+                    gt_rows.append(f"{f},1,20,20,16,12,1,car,1.0")
+                (gt_dir / "gt.txt").write_text("\n".join(gt_rows) + "\n", encoding="utf-8")
+
+            cfg = VideoSARConfig(
+                experiment_name="vsmb_blind_test",
+                seed=7,
+                output_dir=str(root / "out"),
+                dataset=DatasetConfig(root_dir=str(vsmb_root), split_seed=7),
+            )
+            runner = ExperimentRunner(cfg, run_dir=root / "out")
+            ds = VSMBDataset(root_dir=vsmb_root, split="test", tile_size=128, tile_overlap=0, split_seed=7)
+            results, artifacts = mod.evaluate_real_dataset(ds, runner, "vsmb", "vsmb")
+
+            self.assertGreater(len(results), 0)
+            self.assertTrue(artifacts["metrics"].exists())
+            payload = json.loads((root / "out" / "metrics.json").read_text(encoding="utf-8"))
+            self.assertGreater(len(payload["real_blind_eval"]), 0)
+            self.assertEqual(payload["synthetic_ablation"], {})
+            for name in ("config", "summary", "froc"):
+                self.assertTrue(artifacts[name].exists())
+
     def test_simulation_mwp_and_end_to_end_tracking(self) -> None:
         sim_cfg = SimulationConfig(height=256, width=256, num_frames=16, min_targets=3, max_targets=5, seed=123)
         sim_clean = VideoSARSimulator(sim_cfg, RadarConfig(), MWPConfig(enabled=False))
