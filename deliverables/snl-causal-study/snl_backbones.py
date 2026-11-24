@@ -64,7 +64,8 @@ class TransformerBottleneck(nn.Module):
 class PretrainedFPNBackbone(nn.Module):
     """Drop-in stride-2 feature extractor backed by SMP SegFormer (MiT) or ResNet34 + FPN."""
 
-    def __init__(self, backbone, in_channels, *, pretrained=True, line_context=None, fpn_dim=64):
+    def __init__(self, backbone, in_channels, *, pretrained=True, line_context=None, fpn_dim=64,
+                 channel_adapter=None):
         super().__init__()
         if backbone not in _ENCODER_SPECS:
             raise ValueError(f"Unsupported backbone '{backbone}'. Choose from {BACKBONES}.")
@@ -77,12 +78,30 @@ class PretrainedFPNBackbone(nn.Module):
 
         encoder_name, use_transformer = _ENCODER_SPECS[backbone]
         weights = "imagenet" if pretrained else None
+        # smp's patch_first_conv cycles the 3 ImageNet channels over >3 inputs and
+        # rescales by 3/in_channels (0.375 at stacked's 8 channels), destroying the
+        # pretrained distribution. Feed the encoder 3 channels through a learned 1x1
+        # adapter; the stride-2 fine bypass still sees all raw channels.
+        if channel_adapter is None:
+            channel_adapter = bool(pretrained and in_channels != 3)
+        elif channel_adapter and in_channels == 3:
+            raise ValueError("channel_adapter requires more than 3 input channels")
+        encoder_in_channels = 3 if channel_adapter else in_channels
         self.encoder = smp.encoders.get_encoder(
             encoder_name,
-            in_channels=in_channels,
+            in_channels=encoder_in_channels,
             depth=5,
             weights=weights,
         )
+        self.channel_adapter = None
+        if channel_adapter:
+            self.channel_adapter = nn.Conv2d(in_channels, 3, 1, bias=False)
+            with torch.no_grad():
+                self.channel_adapter.weight.zero_()
+                # Channel 0 is the current frame: grey-to-RGB identity.
+                self.channel_adapter.weight[:3, 0, 0, 0] = 1.0
+                if in_channels > 1:
+                    nn.init.normal_(self.channel_adapter.weight[:, 1:], std=0.01)
         channels = tuple(self.encoder.out_channels)
         # channels = (in_channels, c_s2, c_s4, c_s8, c_s16, c_s32)
         self.has_encoder_s2 = channels[1] > 0
@@ -118,7 +137,8 @@ class PretrainedFPNBackbone(nn.Module):
         pad_h, pad_w = -height % 32, -width % 32
         padded = F.pad(x, (0, pad_w, 0, pad_h), mode="replicate") if (pad_h or pad_w) else x
 
-        feats = self.encoder(padded)
+        encoded = self.channel_adapter(padded) if self.channel_adapter is not None else padded
+        feats = self.encoder(encoded)
         fine = self.fine_proj(feats[1]) if self.has_encoder_s2 else self.fine_stem(padded)
 
         p5 = self.lat5(feats[5])

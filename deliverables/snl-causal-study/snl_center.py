@@ -112,7 +112,8 @@ class LineContext(nn.Module):
 class CenterDetector(nn.Module):
     def __init__(self, dense_offsets=False, input_channels=3, global_context=False, learned_background=False,
                  space_to_depth=False, shared_temporal=False, line_context=False, recurrent_temporal=False,
-                 mixed_temporal=False, task_alignment=False, backbone="tiny", pretrained_backbone=False):
+                 mixed_temporal=False, task_alignment=False, backbone="tiny", pretrained_backbone=False,
+                 channel_adapter=None):
         super().__init__()
         self.dense_offsets = dense_offsets
         self.task_alignment = task_alignment
@@ -155,7 +156,9 @@ class CenterDetector(nn.Module):
             self.fuse_fine = nn.Sequential(convolution(80, 48), convolution(48, 32))
             self.backbone_net = None
         else:
-            self.backbone_net = PretrainedFPNBackbone(backbone, input_channels + 1, pretrained=pretrained_backbone, line_context=LineContext() if line_context else None)
+            self.backbone_net = PretrainedFPNBackbone(backbone, input_channels + 1, pretrained=pretrained_backbone,
+                                                      line_context=LineContext() if line_context else None,
+                                                      channel_adapter=channel_adapter)
             self.fine = self.medium = self.line_context = self.coarse = self.context = self.fuse_medium = self.fuse_fine = None
         self.head = nn.Conv2d(32, 6, 1)
         with torch.no_grad():
@@ -463,13 +466,17 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                  quality_focal=False, rebalance_targets=False, box_projection=False, local_gain_augment=False,
                  seed=1729, pretrained=None, pretraining_epochs=None, recurrent_temporal=False,
                  mixed_temporal=False, rank_peaks=False, task_alignment=False, hard_tiles=(),
-                 nwd_scale=None, epoch_budget=None, backbone="tiny", pretrained_backbone=True):
+                 nwd_scale=None, epoch_budget=None, backbone="tiny", pretrained_backbone=True,
+                 checkpoint_interval=12):
     if initial and pretrained:
         raise ValueError("Choose one initialization checkpoint")
     if nwd_scale is not None and (not np.isfinite(nwd_scale) or nwd_scale <= 0 or not dense_offsets or task_alignment):
         raise ValueError("NWD needs a positive finite scale and the dense geometry head")
-    if epoch_budget is not None and (epoch_budget < 12 or epoch_budget % 12 or pretraining_epochs is not None or initial):
-        raise ValueError("The training budget must be a positive multiple of the normal checkpoint interval")
+    if checkpoint_interval < 1 or EPOCHS % checkpoint_interval:
+        raise ValueError("The checkpoint interval must divide the default training budget")
+    if epoch_budget is not None and (epoch_budget < checkpoint_interval or epoch_budget % checkpoint_interval
+                                     or pretraining_epochs is not None or initial):
+        raise ValueError("The training budget must be a positive multiple of the checkpoint interval")
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     device = backend()
@@ -484,10 +491,12 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                            learned_background=learned_background, space_to_depth=space_to_depth,
                            shared_temporal=shared_temporal, line_context=line_context,
                            recurrent_temporal=recurrent_temporal, mixed_temporal=mixed_temporal,
-                           task_alignment=task_alignment, backbone=backbone, pretrained_backbone=pretrained_backbone and not (initial or pretrained)).to(device)
+                           task_alignment=task_alignment, backbone=backbone,
+                           pretrained_backbone=pretrained_backbone and not (initial or pretrained),
+                           channel_adapter=None).to(device)
     if background is not None:
         model.background.load_state_dict(background.state_dict())
-    epochs, learning_rate, checkpoint_interval = epoch_budget or EPOCHS, 0.001, 12
+    epochs, learning_rate = epoch_budget or EPOCHS, 0.001
     if pretraining_epochs is not None:
         if pretraining_epochs < 1 or pretrained or initial:
             raise ValueError("Source pretraining needs a positive budget and fresh initialization")
@@ -630,6 +639,7 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                    "soft_label_heatmap": soft_heat, "input_channels": channels}
             if backbone != "tiny":
                 config["backbone"] = backbone
+                config["channel_adapter"] = bool(model.backbone_net.channel_adapter is not None)
             if pretrained:
                 config["pretrained_sha256"] = pretrained["sha256"]
             if hard_tiles:

@@ -44,7 +44,11 @@ CENTER_INPUTS = {
     "center-quality-focal": "stacked", "center-stacked-normalized": "stacked-standardized",
     "center-stacked-long": "stacked-long", "center-weak-sampling": "stacked", "center-box-projection": "stacked",
     "center-local-gain": "stacked", "center-stacked-copy": "stacked",
+    "center-stacked-fused": "stacked",
 }
+# Historical 28.06% operating point: seven-frame causal stack with local-contrast
+# view fusion and three-frame history confirmation.
+FUSED_VIEW = {"contrast_gain": 1.35, "track_support": 3}
 def quality(result):
     return (passed(result), result["f1"] or 0, result["recall"] or 0, result["precision"] or 0)
 
@@ -528,6 +532,8 @@ def main():
                         help="Override the center detector training epoch count")
     parser.add_argument("--random-backbone", action="store_true",
                         help="Initialize the selected backbone randomly instead of with ImageNet weights")
+    parser.add_argument("--checkpoint-interval", type=int, default=12,
+                        help="Checkpoint cadence for center training (6 reduces calibration selection bias)")
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
@@ -623,13 +629,16 @@ def main():
                                        box_projection=args.phase == "center-box-projection",
                                        local_gain_augment=args.phase == "center-local-gain", seed=args.seed,
                                        backbone=args.backbone, epoch_budget=args.epoch_budget,
-                                       pretrained_backbone=not args.random_backbone):
+                                       pretrained_backbone=not args.random_backbone,
+                                       checkpoint_interval=args.checkpoint_interval):
             registry.append(checkpoint)
             suffix = f"-seed{args.seed}" if args.seed != 1729 else ""
             write_json(output / f"checkpoints-{args.phase}{suffix}.json", registry)
         candidates = registry
         if args.phase == "center-task-aligned":
             candidates = registry + [row | {"dense_candidate_limit": 1024} for row in registry]
+        if args.phase == "center-stacked-fused":
+            candidates = registry + [row | FUSED_VIEW for row in registry]
         develop(output, features, validation, development, candidates)
         propose(output)
     elif args.phase == "center-tiled":
