@@ -1,6 +1,6 @@
 /* Ka-band video SAR shadow comparison workbench.
- * Layout: fixed rail (input / model / run) + canvas (columns / pills / filmstrip).
- * No framework, no CDN, fully offline. */
+- Layout: fixed rail (input / model / run) + canvas (columns / pills / filmstrip).
+- No framework, no CDN, fully offline. */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
@@ -11,9 +11,11 @@ const ICON_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="curren
 function setPlayState(playing) {
   const icon = $("playIcon");
   const label = $("playLabel");
+  const btn = $("btnPlay");
   if (!icon || !label) return;
   icon.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
   label.textContent = playing ? "暂停" : "播放";
+  if (btn) btn.classList.toggle("playing", Boolean(playing));
 }
 
 const METHODS = {
@@ -263,6 +265,7 @@ async function render() {
   if (state.view === "quad") {
     $("columns").classList.add("hidden");
     $("pills").classList.add("hidden");
+    $("colHint").classList.add("hidden");
     $("quad").classList.remove("hidden");
     $("quadBar").classList.remove("hidden");
     await renderQuad();
@@ -335,16 +338,17 @@ async function renderColumns() {
     const current = state.slots[slot] ?? -1;
     const head = `
       <div class="col-head">
-        <select class="slotPick" data-slot="${slot}">${slotOptions(current)}</select>
+        <select class="slotPick" data-slot="${slot}" aria-label="选择槽位 ${slot + 1} 对比结果">${slotOptions(current)}</select>
         <span class="f1">${side ? `F1 ${fmt(side.summary?.target_f1)}` : ""}</span>
       </div>`;
     if (!side) {
       cells.push(`
-        <div class="col">
+        <div class="col col-empty" title="点击选择已有结果，或在左侧勾选更多模型后运行">
           ${head}
-          <button class="slot-empty" data-slot="${slot}">
-            <span>空位</span>
-            <span style="font-size:11px;">点击选择已有结果，或在左侧勾选模型后运行</span>
+          <button class="slot-empty" data-slot="${slot}" type="button" tabindex="-1">
+            <span class="slot-plus" aria-hidden="true">+</span>
+            <span class="slot-label">添加对比</span>
+            <span class="slot-sub">选择已有结果，或在左侧勾选模型运行</span>
           </button>
           <div class="col-foot"></div>
         </div>`);
@@ -389,10 +393,11 @@ async function renderColumns() {
     });
   }
 
+  // 空槽位已收纳为紧凑的「+ 添加对比」侧条，仅在全部为空时显示底部提示以节省主舞台高度
   const hint = $("colHint");
-  if (filled.length < SLOT_COUNT) {
+  if (filled.length === 0) {
     hint.classList.remove("hidden");
-    hint.textContent = `还有 ${SLOT_COUNT - filled.length} 列空着：在左侧多勾几个模型再运行，或在列头直接选已有结果。`;
+    hint.textContent = "在左侧勾选模型后点击「运行检测」，或点击空槽位选择已有结果。";
   } else {
     hint.classList.add("hidden");
   }
@@ -429,6 +434,7 @@ function renderPills(sides) {
     return;
   }
   host.classList.remove("hidden");
+  host.classList.toggle("has-delta", sides.length >= 2);
   host.innerHTML = [
     pillCard("目标级 F1", fmt(last.target_f1), diff("target_f1"), 3),
     pillCard("区域 IoU", fmt(last.iou), diff("iou"), 3),
@@ -583,7 +589,7 @@ function closeSheet() {
 }
 
 function renderVideo() {
-  ["columns", "quad", "quadBar", "pills", "strip", "stageEmpty"].forEach((id) =>
+  ["columns", "quad", "quadBar", "pills", "strip", "stageEmpty", "colHint"].forEach((id) =>
     $(id).classList.add("hidden")
   );
   $("videoStage").classList.remove("hidden");
