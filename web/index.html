@@ -26,6 +26,12 @@
       --err: #b3261e;
       --stage: #1f1f1f;
 
+      /* 数据色：必须与 videosar_ui.imaging 实际绘制值一致（TRUTH 64,235,120 / PRED 255,92,92
+         / CROP 255,64,64），改这里等于改图例含义，不随界面色板统一调整 */
+      --viz-truth: #40eb78;
+      --viz-pred: #ff5c5c;
+      --viz-crop: #ff4040;
+
       /* M3 shape scale */
       --r-xs: 4px;
       --r-sm: 8px;
@@ -308,6 +314,7 @@
       flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
       padding: 10px 14px; cursor: pointer; user-select: none;
     }
+    /* padding-top 是滚动内容区的一部分：首行从它下方进入遮罩带，不会在 t=0 被削掉 */
     .steps-body {
       overflow: auto; padding: 12px 14px 10px;
       -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
@@ -567,8 +574,8 @@
           <select id="dispDiff"><option value="median">短期历史中值</option><option value="previous">前一帧</option></select>
         </div>
         <label class="switch-row"><span>轻度去斑平滑</span><input type="checkbox" id="dispDenoise" /></label>
-        <label class="switch-row"><span><span class="dot" style="background:#40eb78"></span>真值轮廓</span><input type="checkbox" id="dispTruth" checked /></label>
-        <label class="switch-row"><span><span class="dot" style="background:#ff5c5c"></span>预测轮廓</span><input type="checkbox" id="dispPred" checked /></label>
+        <label class="switch-row"><span><span class="dot" style="background:var(--viz-truth)"></span>真值轮廓</span><input type="checkbox" id="dispTruth" checked /></label>
+        <label class="switch-row"><span><span class="dot" style="background:var(--viz-pred)"></span>预测轮廓</span><input type="checkbox" id="dispPred" checked /></label>
         <label class="switch-row"><span>像素锐化缩放</span><input type="checkbox" id="dispPixelated" checked /></label>
       </div>
     </div>

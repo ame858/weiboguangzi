@@ -576,6 +576,12 @@ function markStrip() {
   if (active) active.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
+function closeSheet() {
+  if ($("metricSheet").classList.contains("hidden")) return;
+  $("metricSheet").classList.add("hidden");
+  $("btnAllMetrics").focus();   // 焦点回入口，键盘用户不会丢失位置
+}
+
 function renderVideo() {
   ["columns", "quad", "quadBar", "pills", "strip", "stageEmpty"].forEach((id) =>
     $(id).classList.add("hidden")
@@ -854,7 +860,7 @@ function drawCrop() {
   ctx.fillRect(0, y + h, canvas.width, canvas.height - (y + h));
   ctx.fillRect(0, y, x, h);
   ctx.fillRect(x + w, y, canvas.width - (x + w), h);
-  ctx.strokeStyle = "#ea4335";
+  ctx.strokeStyle = "#ff4040";
   ctx.lineWidth = Math.max(2, Math.round(canvas.width / 260));
   ctx.strokeRect(x, y, w, h);
 }
@@ -1045,18 +1051,17 @@ function bind() {
     const video = $("videoOverlay");
     if (video && !video.paused) video.pause();
     $("metricSheet").classList.remove("hidden");
+    $("btnCloseSheet").focus({ preventScroll: true });
   });
-  $("btnCloseSheet").addEventListener("click", () => $("metricSheet").classList.add("hidden"));
+  $("btnCloseSheet").addEventListener("click", closeSheet);
   $("metricSheet").addEventListener("click", (ev) => {
-    if (ev.target === $("metricSheet")) $("metricSheet").classList.add("hidden");
+    if (ev.target === $("metricSheet")) closeSheet();
   });
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("metricSheet").classList.contains("hidden")) {
       e.preventDefault();
-      $("btnCloseSheet").click();
-      // 焦点还给入口按钮，否则关闭后焦点掉到 body，键盘用户失去位置
-      $("btnAllMetrics").focus();
+      closeSheet();
       return;
     }
     // 弹层是模态的：开着时不允许空格/方向键改背后的帧
@@ -1065,7 +1070,11 @@ function bind() {
     // 焦点在按钮上时，空格是原生激活，不能被劫持成播放
     if (e.code === "Space" && document.activeElement?.tagName === "BUTTON") return;
     if (!state.results.length) return;
-    if (e.code === "Space") { e.preventDefault(); togglePlayback(); }
+    if (e.code === "Space") {
+      if (state.count <= 1) return;   // 单帧时 togglePlayback 会直接返回，别白吞按键
+      e.preventDefault();
+      togglePlayback();
+    }
     else if (e.code === "ArrowLeft") { e.preventDefault(); gotoFrame(state.index - 1); }
     else if (e.code === "ArrowRight") { e.preventDefault(); gotoFrame(state.index + 1); }
   });
