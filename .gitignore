@@ -22,3 +22,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# YOLO 离线权重副本（正式权重在 runs/snl-yolo11-p2/weights）
+deliverables/snl-causal-study/yolo11n.pt
