@@ -6,4 +6,5 @@ PyYAML>=6.0
 # torch>=2.1
 # radarsimpy
 
-# Retained for legacy imaging/preview modules:/nPillow>=10,<13/n
+# Retained for legacy imaging/preview modules:
+Pillow>=10,<13
