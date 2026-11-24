@@ -6,16 +6,21 @@ installing requirements-gui.txt.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 import numpy as np
+from fastapi.testclient import TestClient
 
+import server
 from videosar_ui import commands as cmd
 from videosar_ui import imaging as viz
 from videosar_ui import scanning as scan
+from videosar_ui import v2_contract as v2
 
 
 class ImagingTest(TestCase):
@@ -285,3 +290,176 @@ class CommandsTest(TestCase):
         for key in ("ffmpeg", "torch", "torchvision", "imageio", "imageio_ffmpeg", "python"):
             self.assertIn(key, report)
         self.assertTrue(report["python"])
+
+
+def _write_v2_artifacts(directory, *, real=True, synthetic=True, seed=42):
+    """Create a valid 4-file v2.0 run for parser / API tests."""
+    directory.mkdir(parents=True, exist_ok=True)
+    config = {
+        "experiment_name": "videosar_simulate",
+        "seed": seed,
+        "mwp": {"enabled": False},
+        "output_dir": str(directory),
+    }
+    (directory / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    real_records = ({"snl_seq_01": {"split_name": "snl_seq_01", "domain": "real",
+                                    "map_50": 0.71}} if real else {})
+    synthetic_records = ({"synthetic_ka_baseline": {
+        "split_name": "synthetic_ka_baseline", "domain": "synthetic", "map_50": 0.62,
+    }} if synthetic else {})
+    metrics = {
+        "experiment_name": "videosar_simulate",
+        "timestamp_utc": "2026-11-24T00:00:00+00:00",
+        "git_commit": "df48661",
+        "seed": seed,
+        "real_blind_eval": real_records,
+        "synthetic_ablation": synthetic_records,
+    }
+    (directory / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
+
+    header = ("split_name,domain,map_50,map_30,fa_per_frame_50,recall_at_1_fa,"
+              "mota,idf1,hota,id_switches\n")
+    rows = []
+    if real:
+        rows.append("snl_seq_01,real,0.7100,0.6600,0.0500,0.5500,0.6100,0.5800,0.5200,3\n")
+    if synthetic:
+        rows.append("synthetic_ka_baseline,synthetic,0.6200,0.5700,0.0800,"
+                    "0.4800,0.5100,0.4700,0.4300,2\n")
+    (directory / "summary.csv").write_text(header + "".join(rows), encoding="utf-8")
+
+    froc = "split_name,domain,fa_per_frame,recall,score\n"
+    if real:
+        froc += ("snl_seq_01,real,0.000000,0.000000,0.950000\n"
+                 "snl_seq_01,real,0.050000,0.400000,0.700000\n")
+    if synthetic:
+        froc += ("synthetic_ka_baseline,synthetic,0.000000,0.000000,0.950000\n"
+                 "synthetic_ka_baseline,synthetic,0.080000,0.480000,0.600000\n")
+    (directory / "froc_curve.csv").write_text(froc, encoding="utf-8")
+    return directory
+
+
+class V2ContractTest(TestCase):
+    def test_load_v2_run_parses_four_artifacts_and_keeps_partitions_separate(self):
+        with TemporaryDirectory() as folder:
+            run_dir = _write_v2_artifacts(Path(folder) / "demo")
+            data = v2.load_v2_run(run_dir)
+            for key in ("config", "git_commit", "seed", "timestamp_utc",
+                        "real_blind_eval", "synthetic_ablation", "summary", "froc_curve"):
+                self.assertIn(key, data)
+            self.assertEqual(data["git_commit"], "df48661")
+            self.assertEqual(data["seed"], 42)
+            self.assertEqual(data["timestamp_utc"], "2026-11-24T00:00:00+00:00")
+            self.assertIn("snl_seq_01", data["real_blind_eval"])
+            self.assertIn("synthetic_ka_baseline", data["synthetic_ablation"])
+            self.assertTrue(data["has_real"] and data["has_synthetic"])
+            self.assertEqual(len(data["summary"]), 2)
+            real_row = data["summary"][0]
+            self.assertEqual(real_row["domain"], "real")
+            self.assertAlmostEqual(real_row["map_50"], 0.71)
+            self.assertAlmostEqual(real_row["recall_at_1_fa"], 0.55)
+            self.assertEqual(real_row["id_switches"], 3)
+            self.assertEqual(data["summary"][1]["domain"], "synthetic")
+            self.assertAlmostEqual(data["summary"][1]["mota"], 0.51)
+            self.assertEqual(len(data["froc_curve"]), 4)
+            point = data["froc_curve"][3]
+            self.assertEqual(point["split_name"], "synthetic_ka_baseline")
+            self.assertAlmostEqual(point["fa_per_frame"], 0.08)
+            self.assertAlmostEqual(point["recall"], 0.48)
+            # No averaged / merged partition is ever produced.
+            self.assertNotIn("metrics", data)
+
+    def test_empty_partition_stays_empty(self):
+        with TemporaryDirectory() as folder:
+            run_dir = _write_v2_artifacts(Path(folder) / "synthetic_only", real=False)
+            data = v2.load_v2_run(run_dir)
+            self.assertEqual(data["real_blind_eval"], {})
+            self.assertFalse(data["has_real"])
+            self.assertTrue(data["has_synthetic"])
+            self.assertEqual([row["domain"] for row in data["summary"]], ["synthetic"])
+
+    def test_list_v2_runs_sorted_by_mtime_and_filters_incomplete_dirs(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            first = _write_v2_artifacts(root / "first", real=True, synthetic=False)
+            second = _write_v2_artifacts(root / "second", real=False, synthetic=True)
+            incomplete = root / "incomplete"
+            incomplete.mkdir()
+            (incomplete / "config.json").write_text("{}", encoding="utf-8")
+            os.utime(first / "metrics.json", (1_000_000, 1_000_000))
+            os.utime(second / "metrics.json", (2_000_000, 2_000_000))
+            runs = v2.list_v2_runs(root)
+            self.assertEqual([run["run_id"] for run in runs], ["second", "first"])
+            self.assertEqual(runs[0]["mode"], "simulate")
+            self.assertFalse(runs[0]["has_real"])
+            self.assertTrue(runs[0]["has_synthetic"])
+            self.assertTrue(runs[1]["has_real"])
+            self.assertFalse(runs[1]["has_synthetic"])
+            self.assertEqual(v2.list_v2_runs(root / "absent"), [])
+
+    def test_resolve_run_dir_rejects_traversal_and_non_runs(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            valid = _write_v2_artifacts(root / "valid")
+            self.assertEqual(v2.resolve_run_dir(root, "valid"), valid)
+            for hostile in ("../secret", "..\\secret", "/etc/passwd", str(valid),
+                            "missing", "valid/../secret", ""):
+                self.assertIsNone(v2.resolve_run_dir(root, hostile))
+
+    def test_build_v2_benchmark_command(self):
+        smoke = cmd.build_v2_benchmark_command("smoke", "outputs/ui_smoke_verify")
+        self.assertIn("run_benchmark.py", " ".join(smoke))
+        self.assertEqual(smoke[smoke.index("--mode") + 1], "smoke")
+        self.assertEqual(smoke[smoke.index("--output-dir") + 1], "outputs/ui_smoke_verify")
+        self.assertNotIn("--mwp-enabled", smoke)
+        self.assertNotIn("--data-root", smoke)
+        simulate = cmd.build_v2_benchmark_command("simulate", "outputs/mwp", True)
+        self.assertIn("--mwp-enabled", simulate)
+        evaluate = cmd.build_v2_benchmark_command("eval-snl", "outputs/snl",
+                                                  data_root="data/snl")
+        self.assertEqual(evaluate[evaluate.index("--data-root") + 1], "data/snl")
+        with self.assertRaises(ValueError):
+            cmd.build_v2_benchmark_command("bogus", "outputs/x")
+
+
+class V2ApiTest(TestCase):
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.outputs = Path(self._tmp.name)
+        _write_v2_artifacts(self.outputs / "demo_run", real=True, synthetic=True)
+        env = patch.dict(os.environ, {"VIDEOSAR_OUTPUTS_ROOT": str(self.outputs)})
+        env.start()
+        self.addCleanup(env.stop)
+        self.client = TestClient(server.app)
+
+    def test_v2_runs_and_detail_return_expected_keys(self):
+        response = self.client.get("/api/v2/runs")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("runs", payload)
+        self.assertEqual(payload["runs"][0]["run_id"], "demo_run")
+        self.assertTrue(payload["runs"][0]["has_real"])
+        self.assertTrue(payload["runs"][0]["has_synthetic"])
+
+        detail = self.client.get("/api/v2/runs/demo_run")
+        self.assertEqual(detail.status_code, 200)
+        data = detail.json()
+        for key in ("git_commit", "seed", "timestamp_utc", "real_blind_eval",
+                    "synthetic_ablation", "summary", "froc_curve"):
+            self.assertIn(key, data)
+        self.assertEqual(data["run_id"], "demo_run")
+        self.assertIn("snl_seq_01", data["real_blind_eval"])
+        self.assertIn("synthetic_ka_baseline", data["synthetic_ablation"])
+        self.assertEqual(len(data["summary"]), 2)
+        self.assertEqual(len(data["froc_curve"]), 4)
+
+    def test_v2_run_id_traversal_is_rejected(self):
+        for hostile in ("../secret", "..%2Fsecret", "demo_run%2F..%2F..%2Fsecret"):
+            response = self.client.get(f"/api/v2/runs/{hostile}")
+            self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.client.get("/api/v2/runs/missing").status_code, 404)
+
+    def test_v2_run_rejects_unknown_mode(self):
+        response = self.client.post("/api/v2/run", json={"mode": "bogus"})
+        self.assertEqual(response.status_code, 400)

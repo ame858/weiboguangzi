@@ -12,6 +12,8 @@ from datetime import datetime
 from importlib.util import find_spec
 from pathlib import Path
 
+from videosar_ui.v2_contract import V2_MODES
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEMO_CONFIG = REPO_ROOT / "examples" / "urban-shadow.json"
@@ -88,6 +90,20 @@ def detect_video_command(input_path, output_dir, crop=None, start_frame=0,
         command += ["--crop", *(str(int(value)) for value in crop)]
     command += ["--start-frame", str(int(start_frame)),
                 "--max-frames", str(int(max_frames)), "--output-dir", str(output_dir)]
+    return command
+
+
+def build_v2_benchmark_command(mode, output_dir, mwp_enabled=False, data_root=None,
+                               root=REPO_ROOT, python=None):
+    """Assemble a ``scripts/run_benchmark.py`` invocation for a v2.0 run."""
+    if mode not in V2_MODES:
+        raise ValueError(f"未知的运行模式：{mode}")
+    command = [python or _python(), str(Path(root) / "scripts" / "run_benchmark.py"),
+               "--mode", str(mode), "--output-dir", str(output_dir)]
+    if mwp_enabled:
+        command += ["--mwp-enabled"]
+    if data_root:
+        command += ["--data-root", str(data_root)]
     return command
 
 
