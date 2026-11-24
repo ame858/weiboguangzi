@@ -1,0 +1,8 @@
+# Streamlit GUI 专用依赖（与核心实验依赖隔离）
+# 安装： .\.venv\Scripts\python.exe -m pip install -r requirements-gui.txt
+# 说明：本文件不修改 requirements.txt / requirements-unet.txt；-r 只引入已有的基础依赖。
+-r requirements.txt
+
+streamlit>=1.37,<2
+imageio>=2.31,<3
+imageio-ffmpeg>=0.4.9
