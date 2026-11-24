@@ -628,9 +628,9 @@ def train_center(output, features, labels, *, augment=False, motion_bank=None, i
                    "initial_sha256": initial["sha256"] if initial else None,
                    "training_label_frames": len(labels), "stabilized_training_labels": stabilized_labels,
                    "soft_label_heatmap": soft_heat, "input_channels": channels}
-        if backbone != "tiny":
-           config["backbone"] = backbone
-        if pretrained:
+            if backbone != "tiny":
+                config["backbone"] = backbone
+            if pretrained:
                 config["pretrained_sha256"] = pretrained["sha256"]
             if hard_tiles:
                 config["extra_training_tiles"] = len(hard_tiles)

@@ -520,6 +520,14 @@ def main():
     parser.add_argument("--method", choices=("gray", "temporal"), default="temporal")
     parser.add_argument("--scale", choices=(2, 3), default=2, type=int)
     parser.add_argument("--blind-set", choices=tuple(BLIND), default="first")
+    from snl_backbones import BACKBONES
+
+    parser.add_argument("--backbone", choices=BACKBONES, default="tiny",
+                        help="CenterDetector feature extractor (SNL architecture upgrade)")
+    parser.add_argument("--epoch-budget", type=int, default=None,
+                        help="Override the center detector training epoch count")
+    parser.add_argument("--random-backbone", action="store_true",
+                        help="Initialize the selected backbone randomly instead of with ImageNet weights")
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
@@ -613,7 +621,9 @@ def main():
                                        weak_shadow_augment=args.phase == "center-weak-shadows",
                                        quality_focal=quality_focal, rebalance_targets=args.phase == "center-weak-sampling",
                                        box_projection=args.phase == "center-box-projection",
-                                       local_gain_augment=args.phase == "center-local-gain", seed=args.seed):
+                                       local_gain_augment=args.phase == "center-local-gain", seed=args.seed,
+                                       backbone=args.backbone, epoch_budget=args.epoch_budget,
+                                       pretrained_backbone=not args.random_backbone):
             registry.append(checkpoint)
             suffix = f"-seed{args.seed}" if args.seed != 1729 else ""
             write_json(output / f"checkpoints-{args.phase}{suffix}.json", registry)
