@@ -226,7 +226,10 @@ class ScanningTest(TestCase):
             target = preview_root / scan.SNL_PREVIEWS[0]
             target.parent.mkdir(parents=True)
             target.write_bytes(b"fake")
-            self.assertEqual(scan.preview_videos(preview_root), [str(target)])
+            # preview_videos also probes REPO_ROOT/runs; isolate the repo fallback
+            # so a real overlay.mp4 in the working tree cannot leak into this test.
+            with patch.object(scan, "REPO_ROOT", root):
+                self.assertEqual(scan.preview_videos(preview_root), [str(target)])
             self.assertEqual(scan.live_dirs(preview_root)["live-detect"], None)
 
     def test_snl_model_info_exposes_development_scores(self):
