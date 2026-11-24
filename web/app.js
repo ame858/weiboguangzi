@@ -1,39 +1,88 @@
-/* Ka-band Video SAR Workbench Frontend — Material Design 3 (light) edition.
- * Zero external dependencies: no CDN, no framework, works fully offline. */
+/* Ka-band Video SAR shadow workbench — single-page flow: 输入 → 模型 → 结果.
+ * No framework, no CDN; works fully offline. */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 
+const METHODS = {
+  threshold: { label: "局部暗度阈值", hint: "传统 · 无需训练" },
+  difference: { label: "时序背景差分", hint: "传统 · 抵消静态背景" },
+  learned: { label: "U-Net 时序", hint: "学习模型 · 需 PyTorch" },
+};
+
+const METRIC_ROWS = [
+  { key: "target_f1", label: "目标级 F1", better: "up", digits: 3 },
+  { key: "iou", label: "区域 IoU", better: "up", digits: 3 },
+  { key: "precision", label: "查准率", better: "up", digits: 3 },
+  { key: "recall", label: "召回率", better: "up", digits: 3 },
+  { key: "fp_per_frame", label: "每帧虚警", better: "down", digits: 2 },
+  { key: "matched", label: "匹配帧", better: "up", digits: 0 },
+  { key: "missed", label: "漏检帧", better: "down", digits: 0 },
+  { key: "continuity", label: "轨迹连续性", better: "up", digits: 3 },
+  { key: "location_rmse_px", label: "定位 RMSE (px)", better: "down", digits: 2 },
+  { key: "velocity_error_mps", label: "速度误差 (m/s)", better: "down", digits: 3 },
+];
+
 const state = {
   boot: null,
   runsRoot: "",
-  activeTab: "tab1",
-  sequences: [],
-  // Tab 1
-  t1Mode: "modeA",
-  bType: "demo",
-  t1Browser: { seq: "", detect: "", track: "", eval: "", count: 0, index: 0 },
-  t1FrameCache: new Map(),
-  t1Inflight: new Set(),
-  t1Playing: false,
-  t1Timer: null,
-  // Tab 2
-  t2ExtraPreds: [],
-  t2Count: 0,
-  t2Index: 0,
-  t2Playing: false,
-  t2Timer: null,
-  // Tab 3
-  t3VideoPath: "",
-  t3Img: null,
-  t3NaturalW: 0,
-  t3NaturalH: 0,
-  t3Crop: { x: 0, y: 0, w: 0, h: 0 },
-  t3Dragging: false,
-  t3DragStart: null,
+  kind: "sequence",
+  seq: "",
+  video: "",
+  videoInfo: null,
+  cropImg: null,
+  crop: { x: 0, y: 0, w: 0, h: 0 },
+  dragging: false,
+  dragStart: null,
+  methods: new Set(["threshold", "learned"]),
+  results: [],
+  meta: null,
+  count: 0,
+  index: 0,
+  view: "compare",
+  playing: false,
+  timer: null,
+  quadCache: new Map(),
+  active: 0,
+  videoResult: null,
 };
 
-function getDisplaySettings() {
+/* ---------------------------------------------------------------- helpers */
+async function apiJson(url, options = {}) {
+  const resp = await fetch(url, options);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+  return data;
+}
+
+function escapeHtml(val) {
+  return String(val).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function setOptions(selectEl, items, valueKey = "path", labelKey = "label") {
+  selectEl.innerHTML = "";
+  for (const item of items) {
+    const opt = document.createElement("option");
+    const isObj = typeof item === "object";
+    opt.value = isObj ? item[valueKey] : item;
+    opt.textContent = isObj ? item[labelKey] : item;
+    selectEl.appendChild(opt);
+  }
+}
+
+function renderTable(container, fields, rows) {
+  if (!fields || !fields.length || !rows || !rows.length) {
+    container.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:12.5px;">暂无数据</div>`;
+    return;
+  }
+  const head = `<thead><tr>${fields.map((f) => `<th>${escapeHtml(f)}</th>`).join("")}</tr></thead>`;
+  const body = rows
+    .map((r) => `<tr>${fields.map((f) => `<td class="mono">${escapeHtml(r[f] ?? "")}</td>`).join("")}</tr>`)
+    .join("");
+  container.innerHTML = `<table class="plain">${head}<tbody>${body}</tbody></table>`;
+}
+
+function getSettings() {
   return {
     mode: $("dispMode").value || "percentile",
     cmap: $("dispCmap").value || "gray",
@@ -44,101 +93,352 @@ function getDisplaySettings() {
   };
 }
 
-function settingsKey(s) {
+function settingsKey() {
+  const s = getSettings();
   return `${s.mode}|${s.cmap}|${s.denoise}|${s.diff_ref}|${s.show_truth}|${s.show_pred}`;
 }
 
-async function apiJson(url, options = {}) {
-  const resp = await fetch(url, options);
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    throw new Error(data.detail || `HTTP ${resp.status}`);
-  }
-  return data;
+function fmt(value, digits = 3) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return digits === 0 ? String(Math.round(value)) : value.toFixed(digits);
 }
 
-function showNotice(elId, msg, level = "") {
-  const el = $(elId);
-  if (!msg) {
-    el.classList.add("hidden");
+function labelOf(result) {
+  if (result.method && METHODS[result.method]) return METHODS[result.method].label;
+  return result.label || "已有关联结果";
+}
+
+function setBadge(el, text, level = "") {
+  el.textContent = text;
+  el.className = `badge ${level}`.trim();
+}
+
+/* ---------------------------------------------------------------- context */
+function updateCtx() {
+  const chip = $("ctxChip");
+  const parts = [];
+  if (state.kind === "video") {
+    if (state.video) parts.push(`<b>${escapeHtml(state.video.split(/[\\/]/).pop())}</b>`);
+  } else if (state.seq) {
+    const tail = state.seq.split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+    parts.push(`<b>${escapeHtml(tail)}</b>`);
+  }
+  if (state.count) parts.push(`${state.count} 帧`);
+  if (state.results.length) {
+    parts.push(state.results.map((r) => escapeHtml(labelOf(r))).join(" · "));
+  }
+  if (!parts.length) {
+    $("ctxText").textContent = "未选择输入";
+    chip.classList.remove("live");
     return;
   }
-  el.innerHTML = msg;
-  el.className = `notice ${level}`.trim();
-  el.classList.remove("hidden");
+  $("ctxText").innerHTML = parts.join('<span class="sep">|</span>');
+  chip.classList.toggle("live", state.results.length > 0 || (state.kind === "video" && Boolean(state.video)));
 }
 
-function setOptions(selectEl, items, includeEmpty = false) {
-  selectEl.innerHTML = "";
-  if (includeEmpty) {
+/* ---------------------------------------------------------------- startup */
+async function boot() {
+  const data = await apiJson("/api/bootstrap");
+  state.boot = data;
+  state.runsRoot = data.runs_root;
+
+  for (const mode of data.modes) {
     const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "（未选择）";
-    selectEl.appendChild(opt);
+    opt.value = mode;
+    opt.textContent = data.mode_labels[mode] || mode;
+    $("dispMode").appendChild(opt);
   }
-  for (const item of items) {
+  for (const cmap of data.cmaps) {
     const opt = document.createElement("option");
-    opt.value = typeof item === "string" ? item : item.path;
-    opt.textContent = typeof item === "string" ? item : item.label;
-    selectEl.appendChild(opt);
+    opt.value = cmap;
+    opt.textContent = cmap;
+    $("dispCmap").appendChild(opt);
+  }
+  $("modelPath").value = data.defaults.unet_model || "";
+
+  setOptions($("archiveSelect"), data.archive_tables);
+  if (data.archive_tables.length) loadArchive(data.archive_tables[0].path);
+
+  const seqs = await apiJson(`/api/sequences?runs_root=${encodeURIComponent(state.runsRoot)}`);
+  setOptions($("seqSelect"), seqs.sequences);
+  if (seqs.sequences.length) {
+    const preferred = seqs.sequences.find((s) => s.label.includes("结题演示·优先")) || seqs.sequences[0];
+    $("seqSelect").value = preferred.path;
+    await loadSequence(preferred.path);
+  } else {
+    $("inputHint").textContent = "runs/ 下未找到 frames.npy";
+    updateCtx();
   }
 }
 
-function escapeHtml(val) {
-  return String(val)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
+/* ---------------------------------------------------------------- input */
+async function loadSequence(path) {
+  if (!path) return;
+  state.kind = "sequence";
+  state.seq = path;
+  state.index = 0;
+  state.quadCache.clear();
+  state.videoResult = null;
+  $("videoResult").classList.add("hidden");
+  stopPlayback();
+  $("inputHint").textContent = "正在载入…";
 
-function renderTable(container, fields, rows) {
-  if (!fields || !fields.length || !rows || !rows.length) {
-    container.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:13px;">暂无数据</div>`;
-    return;
+  try {
+    const res = await apiJson(
+      `/api/results?runs_root=${encodeURIComponent(state.runsRoot)}&sequence_dir=${encodeURIComponent(path)}`
+    );
+    const auto = res.auto || {};
+    const match = auto.predictions
+      ? (res.predictions || []).find((p) => p.path === auto.predictions)
+      : null;
+    state.results = auto.predictions
+      ? [{
+          method: "existing",
+          // Show which run this came from instead of a vague placeholder.
+          label: match ? match.label.split("/").slice(-2).join("/") : "已有关联结果",
+          detect: auto.predictions,
+          track: auto.tracks || null,
+          evaluate: auto.metrics || null,
+        }]
+      : [];
+    await refreshMeta();
+    $("inputHint").textContent = state.results.length
+      ? "已载入该序列的既有检测结果"
+      : "该序列暂无检测结果，选择模型后运行即可";
+    await renderAll();
+  } catch (err) {
+    $("inputHint").textContent = err.message;
   }
-  const thead = `<thead><tr>${fields.map((f) => `<th>${escapeHtml(f)}</th>`).join("")}</tr></thead>`;
-  const tbody = `<tbody>${rows
-    .map((r) => `<tr>${fields.map((f) => `<td class="mono">${escapeHtml(r[f] ?? "")}</td>`).join("")}</tr>`)
-    .join("")}</tbody>`;
-  container.innerHTML = `<table>${thead}${tbody}</table>`;
 }
 
-/* =========================================================================
- * SSE Job Streamer
- * ========================================================================= */
-function streamJob(jobId, logEl, statusEl, onDone) {
-  logEl.textContent = "";
-  statusEl.textContent = "运行中...";
-  statusEl.className = "badge warn";
-  const es = new EventSource(`/api/jobs/${jobId}/stream`);
-  es.addEventListener("log", (ev) => {
-    const { line } = JSON.parse(ev.data);
-    logEl.textContent += (logEl.textContent ? "\n" : "") + line;
-    logEl.scrollTop = logEl.scrollHeight;
-  });
-  es.addEventListener("done", (ev) => {
-    es.close();
-    const { ok, result } = JSON.parse(ev.data);
-    statusEl.textContent = ok ? "已完成" : "执行失败";
-    statusEl.className = ok ? "badge ok" : "badge err";
-    onDone(ok, result);
-  });
-  es.onerror = () => {
-    es.close();
-    statusEl.textContent = "连接中断";
-    statusEl.className = "badge err";
+async function refreshMeta() {
+  const first = state.results[0];
+  const payload = {
+    sequence_dir: state.seq,
+    detect_dir: first?.detect || null,
+    track_dir: first?.track || null,
+    evaluate_dir: first?.evaluate || null,
   };
+  try {
+    state.meta = await apiJson("/api/browser/meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.count = state.meta.count || 0;
+  } catch {
+    state.meta = null;
+    state.count = 0;
+  }
+  $("slider").max = Math.max(0, state.count - 1);
+  updateCtx();
 }
 
-/* =========================================================================
- * Google-styled Light Canvas Charts (crisp HiDPI, rounded bars)
- * ========================================================================= */
-const CHART_INK = "#747775";
-const CHART_GRID = "#e3e8ef";
-const CHART_LABEL = "#444746";
-const PALETTE = ["#1a73e8", "#1e8e3e", "#f9ab00", "#d93025", "#9334e6", "#12b5cb"];
+/* ---------------------------------------------------------------- render */
+async function renderAll() {
+  updateTransport();
+  if (state.kind === "video") {
+    renderVideoResult();
+    return;
+  }
+  if (!state.results.length) {
+    $("emptyState").classList.remove("hidden");
+    $("emptyState").textContent = "该序列还没有检测结果。选择模型后点「运行检测」，或换一个已有结果的序列。";
+    ["compareGrid", "quadWrap", "metricWrap", "transport"].forEach((id) => $(id).classList.add("hidden"));
+    return;
+  }
+  $("emptyState").classList.add("hidden");
+  $("transport").classList.remove("hidden");
+  if (state.view === "quad") {
+    $("compareGrid").classList.add("hidden");
+    $("quadWrap").classList.remove("hidden");
+    await renderQuad();
+  } else {
+    $("quadWrap").classList.add("hidden");
+    $("compareGrid").classList.remove("hidden");
+    await renderCompare();
+  }
+  renderTracks();
+}
 
-function prepareCanvas(canvas, fallbackW, fallbackH) {
+function updateTransport() {
+  $("slider").value = state.index;
+  $("frameCounter").textContent = state.count ? `${state.index} / ${state.count - 1}` : "0 / 0";
+}
+
+async function renderCompare() {
+  const sides = state.results.map((r) => ({
+    detect_dir: r.detect,
+    evaluate_dir: r.evaluate || null,
+    label: labelOf(r),
+  }));
+  let data;
+  try {
+    data = await apiJson("/api/compare/frame", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sequence_dir: state.seq,
+        sides,
+        index: state.index,
+        settings: getSettings(),
+      }),
+    });
+  } catch (err) {
+    $("compareGrid").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  state.count = data.count;
+  state.index = data.index;
+  $("slider").max = Math.max(0, data.count - 1);
+
+  const pixelated = $("dispPixelated").checked;
+  $("compareGrid").classList.toggle("pixelated", pixelated);
+  $("compareGrid").classList.toggle("single", data.sides.length === 1);
+  $("compareGrid").innerHTML = data.sides
+    .map((side) => {
+      const s = side.summary || {};
+      return `
+      <figure class="col">
+        <div class="col-head"><b>${escapeHtml(side.label)}</b><span class="mono">${data.index + 1}/${data.count}</span></div>
+        <div class="col-img"><img src="${side.image}" alt="${escapeHtml(side.label)}" /></div>
+        <div class="col-foot">
+          <span>IoU <span class="score">${fmt(s.iou)}</span></span>
+          <span>虚警/帧 <span class="score">${fmt(s.fp_per_frame, 2)}</span></span>
+          <span>重叠 <span class="score">${escapeHtml(side.overlap)}</span> px</span>
+        </div>
+      </figure>`;
+    })
+    .join("");
+
+  renderMetricTable(data.sides);
+  $("centroidBadge").textContent = data.sides.length > 1
+    ? `${data.sides.length} 个模型同屏`
+    : `IoU ${fmt(data.sides[0]?.summary?.iou)}`;
+  $("cacheBadge").classList.add("hidden");
+  updateTransport();
+}
+
+function renderMetricTable(sides) {
+  if (!sides.some((side) => side.summary)) {
+    $("metricWrap").classList.add("hidden");
+    return;
+  }
+  $("metricWrap").classList.remove("hidden");
+  const base = sides[0]?.summary || {};
+  const head = `<thead><tr><th>指标</th>${sides
+    .map((side) => `<th>${escapeHtml(side.label)}</th>`)
+    .join("")}</tr></thead>`;
+
+  const body = METRIC_ROWS.map((row) => {
+    const cells = sides.map((side, i) => {
+      const value = side.summary ? side.summary[row.key] : null;
+      let delta = "";
+      if (i > 0 && side.summary) {
+        const b = base[row.key];
+        const v = side.summary[row.key];
+        if (Number.isFinite(b) && Number.isFinite(v)) {
+          const diff = v - b;
+          if (Math.abs(diff) > 1e-9) {
+            const good = row.better === "down" ? diff < 0 : diff > 0;
+            delta = `<span class="delta ${good ? "up" : "down"}">${good ? "↑" : "↓"}${Math.abs(diff).toFixed(row.digits)}</span>`;
+          } else {
+            delta = `<span class="delta flat">±0</span>`;
+          }
+        }
+      }
+      return `<td class="val">${fmt(value, row.digits)}${delta}</td>`;
+    });
+    return `<tr><td>${row.label}</td>${cells.join("")}</tr>`;
+  }).join("");
+
+  $("metricTable").innerHTML = `${head}<tbody>${body}</tbody>`;
+}
+
+function syncQuadSource() {
+  const sel = $("quadSource");
+  sel.innerHTML = "";
+  if (state.results.length < 2) {
+    sel.classList.add("hidden");
+    return;
+  }
+  state.results.forEach((r, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = labelOf(r);
+    sel.appendChild(opt);
+  });
+  sel.value = String(state.active);
+  sel.classList.remove("hidden");
+}
+
+async function renderQuad() {
+  syncQuadSource();
+  const result = state.results[state.active] || state.results[0];
+  if (!result) return;
+  const key = `${result.detect}|${state.index}|${settingsKey()}`;
+  let data = state.quadCache.get(key);
+  if (!data) {
+    try {
+      data = await apiJson("/api/browser/frame", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sequence_dir: state.seq,
+          detect_dir: result.detect,
+          track_dir: result.track || null,
+          evaluate_dir: result.evaluate || null,
+          index: state.index,
+          settings: getSettings(),
+        }),
+      });
+    } catch (err) {
+      $("quadWrap").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    state.quadCache.set(key, data);
+    if (state.quadCache.size > 60) state.quadCache.clear();
+  }
+  for (let i = 0; i < 4; i++) $(`quadImg${i}`).src = data.panels[i];
+  state.count = data.count;
+  state.index = data.index;
+  $("slider").max = Math.max(0, data.count - 1);
+  $("centroidBadge").textContent = data.center
+    ? `质心 (${data.center[0].toFixed(1)}, ${data.center[1].toFixed(1)})`
+    : "本帧无阴影";
+  $("quadTag1").textContent = data.index === 0 ? "TEMP-DIFF · 首帧无历史" : "TEMP-DIFF";
+  $("cacheBadge").classList.remove("hidden");
+  $("cacheBadge").textContent = `缓存 ${state.quadCache.size}`;
+  $("quadGrid").classList.toggle("pixelated", $("dispPixelated").checked);
+  updateTransport();
+}
+
+/* ---------------------------------------------------------------- tracks */
+function renderTracks() {
+  const rows = state.meta?.track_rows || [];
+  if (!rows.length) {
+    $("tracksDrawer").classList.add("hidden");
+    return;
+  }
+  $("tracksDrawer").classList.remove("hidden");
+  drawLineChart(
+    $("coordChart"),
+    [
+      { name: "x_px", color: "#1a73e8", values: rows.map((r) => r.x_px) },
+      { name: "y_px", color: "#f9ab00", values: rows.map((r) => r.y_px) },
+    ],
+    state.meta.speed_series.frames
+  );
+  drawLineChart(
+    $("speedChart"),
+    [{ name: "速度 (px/s)", color: "#1e8e3e", values: state.meta.speed_series.speeds }],
+    state.meta.speed_series.frames
+  );
+  renderTable($("tracksTable"), ["frame", "time_s", "x_px", "y_px", "source", "segment"], rows);
+}
+
+/* ---------------------------------------------------------------- charts */
+function prepare(canvas, fallbackW, fallbackH) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth || fallbackW;
   const h = canvas.clientHeight || fallbackH;
@@ -150,50 +450,34 @@ function prepareCanvas(canvas, fallbackW, fallbackH) {
   return { ctx, w, h };
 }
 
-function legendDot(ctx, x, y, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x + 4, y, 4, 0, Math.PI * 2);
-  ctx.fill();
-}
-
 function drawLineChart(canvas, seriesList, xLabels) {
-  const { ctx, w, h } = prepareCanvas(canvas, 560, 195);
-
-  const pad = { l: 48, r: 18, t: 30, b: 28 };
+  const { ctx, w, h } = prepare(canvas, 600, 190);
+  const pad = { l: 48, r: 16, t: 28, b: 26 };
   const plotW = w - pad.l - pad.r;
   const plotH = h - pad.t - pad.b;
-
-  const allVals = seriesList.flatMap((s) => s.values.filter((v) => v !== null && Number.isFinite(v)));
-  if (!allVals.length) {
-    ctx.fillStyle = CHART_INK;
+  const all = seriesList.flatMap((s) => s.values.filter((v) => Number.isFinite(v)));
+  if (!all.length) {
+    ctx.fillStyle = "#747775";
     ctx.font = "13px sans-serif";
-    ctx.fillText("暂无有效轨迹数据", pad.l, pad.t + 36);
+    ctx.fillText("暂无轨迹数据", pad.l, pad.t + 32);
     return;
   }
-  let minY = Math.min(...allVals);
-  let maxY = Math.max(...allVals);
-  if (maxY === minY) {
-    minY -= 1;
-    maxY += 1;
-  }
+  let lo = Math.min(...all);
+  let hi = Math.max(...all);
+  if (hi === lo) { lo -= 1; hi += 1; }
 
-  // Soft horizontal gridlines
-  ctx.strokeStyle = CHART_GRID;
-  ctx.lineWidth = 1;
-  ctx.fillStyle = CHART_INK;
+  ctx.strokeStyle = "#e3e8ef";
+  ctx.fillStyle = "#747775";
   ctx.font = "11px monospace";
   for (let i = 0; i <= 4; i++) {
     const y = pad.t + (plotH * i) / 4;
-    const val = maxY - ((maxY - minY) * i) / 4;
     ctx.beginPath();
     ctx.moveTo(pad.l, y);
     ctx.lineTo(w - pad.r, y);
     ctx.stroke();
-    ctx.fillText(val.toFixed(1), 6, y + 4);
+    ctx.fillText((hi - ((hi - lo) * i) / 4).toFixed(1), 6, y + 4);
   }
 
-  // Series
   const n = Math.max(1, xLabels.length - 1);
   seriesList.forEach((s, idx) => {
     ctx.strokeStyle = s.color;
@@ -203,42 +487,47 @@ function drawLineChart(canvas, seriesList, xLabels) {
     ctx.beginPath();
     let started = false;
     s.values.forEach((v, i) => {
-      if (v === null || !Number.isFinite(v)) {
-        started = false;
-        return;
-      }
+      if (!Number.isFinite(v)) { started = false; return; }
       const x = pad.l + (plotW * i) / n;
-      const y = pad.t + plotH * (1 - (v - minY) / (maxY - minY));
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
-      }
+      const y = pad.t + plotH * (1 - (v - lo) / (hi - lo));
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
     });
     ctx.stroke();
-
-    // Legend
-    const lx = pad.l + idx * 110;
-    legendDot(ctx, lx, 13, s.color);
-    ctx.fillStyle = CHART_LABEL;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(pad.l + idx * 105 + 4, 12, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#444746";
     ctx.font = "500 11.5px sans-serif";
-    ctx.fillText(s.name, lx + 13, 17);
+    ctx.fillText(s.name, pad.l + idx * 105 + 13, 16);
   });
 
-  // X ticks
   if (xLabels.length) {
-    ctx.fillStyle = CHART_INK;
+    ctx.fillStyle = "#747775";
     ctx.font = "11px monospace";
     const step = Math.max(1, Math.floor(xLabels.length / 6));
     for (let i = 0; i < xLabels.length; i += step) {
-      const x = pad.l + (plotW * i) / n;
-      ctx.fillText(String(xLabels[i]), x - 4, h - 8);
+      ctx.fillText(String(xLabels[i]), pad.l + (plotW * i) / n - 4, h - 8);
     }
   }
 }
 
-function drawRoundedBar(ctx, x, y, w, h, r) {
+function stripSharedPrefix(categories) {
+  if (categories.length < 3) return categories;
+  const counts = new Map();
+  for (const name of categories) {
+    const head = String(name).split("_")[0];
+    if (!head || head === name || head.length < 2 || head.length > 8) continue;
+    counts.set(head, (counts.get(head) || 0) + 1);
+  }
+  let best = null;
+  let bestCount = 0;
+  for (const [head, count] of counts) if (count > bestCount) { best = head; bestCount = count; }
+  if (!best || bestCount < Math.ceil(categories.length * 0.6)) return categories;
+  return categories.map((c) => (String(c).startsWith(best + "_") ? String(c).slice(best.length + 1) : String(c)));
+}
+
+function roundedBar(ctx, x, y, w, h, r) {
   if (h <= 0 || w <= 0) return;
   const radius = Math.min(r, w / 2, h);
   ctx.beginPath();
@@ -252,994 +541,500 @@ function drawRoundedBar(ctx, x, y, w, h, r) {
   ctx.fill();
 }
 
-function stripSharedPrefix(categories) {
-  if (categories.length < 3) return categories;
-  // Pick the most frequent leading token ("unet" in unet_single / unet_temporal…),
-  // not the first category's, otherwise a plain name like "threshold" wins.
-  const counts = new Map();
-  for (const name of categories) {
-    const head = String(name).split("_")[0];
-    if (!head || head === name || head.length < 2 || head.length > 8) continue;
-    counts.set(head, (counts.get(head) || 0) + 1);
-  }
-  let best = null;
-  let bestCount = 0;
-  for (const [head, count] of counts) {
-    if (count > bestCount) { best = head; bestCount = count; }
-  }
-  if (!best || bestCount < Math.ceil(categories.length * 0.6)) return categories;
-  return categories.map((c) => (String(c).startsWith(best + "_") ? String(c).slice(best.length + 1) : String(c)));
-}
-
-function drawGroupedBarChart(canvas, chart) {
-  const { ctx, w, h } = prepareCanvas(canvas, 860, 230);
-
+function drawBarChart(canvas, chart) {
+  const { ctx, w, h } = prepare(canvas, 900, 230);
   if (!chart || !chart.categories.length) {
-    ctx.fillStyle = CHART_INK;
+    ctx.fillStyle = "#747775";
     ctx.font = "13px sans-serif";
-    ctx.fillText("当前归档表无可绘制的柱状指标列", 22, 42);
+    ctx.fillText("该表无可绘制的指标列", 22, 42);
     return;
   }
-
-  const pad = { l: 46, r: 20, t: 38, b: 38 };
+  const palette = ["#1a73e8", "#1e8e3e", "#f9ab00", "#d93025", "#9334e6", "#12b5cb"];
+  const pad = { l: 46, r: 18, t: 38, b: 36 };
   const plotW = w - pad.l - pad.r;
   const plotH = h - pad.t - pad.b;
-  const maxVal = Math.max(1.0, ...chart.series.flatMap((s) => s.values));
+  const maxVal = Math.max(1, ...chart.series.flatMap((s) => s.values));
 
   ctx.fillStyle = "#1f1f1f";
   ctx.font = "600 12.5px sans-serif";
   ctx.fillText(chart.title || "", pad.l, 20);
 
-  // Legend
-  let lx = pad.l + 195;
+  let lx = pad.l + 200;
   ctx.font = "500 11.5px sans-serif";
   chart.series.forEach((s, si) => {
-    const color = PALETTE[si % PALETTE.length];
-    legendDot(ctx, lx, 16, color);
-    ctx.fillStyle = CHART_LABEL;
+    ctx.fillStyle = palette[si % palette.length];
+    ctx.beginPath();
+    ctx.arc(lx + 4, 16, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#444746";
     ctx.fillText(s.name, lx + 13, 20);
-    lx += Math.min(135, s.name.length * 7.5 + 34);
+    lx += Math.min(140, s.name.length * 7.5 + 34);
   });
 
-  // Grid
-  ctx.strokeStyle = CHART_GRID;
-  ctx.fillStyle = CHART_INK;
+  ctx.strokeStyle = "#e3e8ef";
+  ctx.fillStyle = "#747775";
   ctx.font = "11px monospace";
   for (let i = 0; i <= 4; i++) {
     const y = pad.t + (plotH * i) / 4;
-    const val = maxVal * (1 - i / 4);
     ctx.beginPath();
     ctx.moveTo(pad.l, y);
     ctx.lineTo(w - pad.r, y);
     ctx.stroke();
-    ctx.fillText(val.toFixed(2), 6, y + 4);
+    ctx.fillText((maxVal * (1 - i / 4)).toFixed(2), 6, y + 4);
   }
 
   const groupW = plotW / chart.categories.length;
   const barW = Math.max(8, Math.min(28, (groupW * 0.7) / Math.max(1, chart.series.length)));
-  // "unet_single / unet_temporal / unet_temporal_noise" all truncate to the same
-  // string, so drop a token shared by most categories before shortening.
   const labels = stripSharedPrefix(chart.categories);
-
   chart.categories.forEach((cat, ci) => {
     const gx = pad.l + ci * groupW + (groupW - barW * chart.series.length) / 2;
     chart.series.forEach((s, si) => {
-      const val = s.values[ci] || 0;
-      const bh = (val / maxVal) * plotH;
-      const x = gx + si * barW;
-      const y = pad.t + plotH - bh;
-      ctx.fillStyle = PALETTE[si % PALETTE.length];
-      drawRoundedBar(ctx, x + 1, y, Math.max(4, barW - 3), bh, 5);
+      const v = s.values[ci] || 0;
+      const bh = (v / maxVal) * plotH;
+      ctx.fillStyle = palette[si % palette.length];
+      roundedBar(ctx, gx + si * barW + 1, pad.t + plotH - bh, Math.max(4, barW - 3), bh, 5);
     });
-    ctx.fillStyle = CHART_LABEL;
+    ctx.fillStyle = "#444746";
     ctx.font = "11.5px sans-serif";
     const raw = labels[ci];
-    const label = raw.length > 16 ? raw.slice(0, 15) + "…" : raw;
-    ctx.fillText(label, pad.l + ci * groupW + 8, h - 13);
+    ctx.fillText(raw.length > 16 ? raw.slice(0, 15) + "…" : raw, pad.l + ci * groupW + 8, h - 12);
   });
 }
 
-/* =========================================================================
- * Bootstrap & Global Scanning
- * ========================================================================= */
-async function bootstrap(runsRoot = "", refresh = false) {
-  const query = runsRoot ? `?runs_root=${encodeURIComponent(runsRoot)}` : "";
-  const data = await apiJson(`/api/bootstrap${query}`);
-  state.boot = data;
-  state.runsRoot = data.runs_root;
-
-  $("runsRootInput").value = data.runs_root;
-  $("repoRootHint").textContent = `仓库路径：${data.repo_root}`;
-  $("runsStatusBadge").textContent = data.runs_exists ? "目录就绪" : "不存在";
-  $("runsStatusBadge").className = data.runs_exists ? "badge ok" : "badge warn";
-
-  // Populate display settings once
-  if (!$("dispMode").options.length) {
-    for (const m of data.modes) {
-      const opt = document.createElement("option");
-      opt.value = m;
-      opt.textContent = data.mode_labels[m] || m;
-      $("dispMode").appendChild(opt);
-    }
-    for (const c of data.cmaps) {
-      const opt = document.createElement("option");
-      opt.value = c;
-      opt.textContent = c;
-      $("dispCmap").appendChild(opt);
-    }
-  }
-
-  $("bDemoConfig").value = data.defaults.demo_config;
-  $("bSarModel").value = data.defaults.unet_model;
-
-  renderTab3Static(data);
-  setOptions($("t2ArchiveSelect"), data.archive_tables);
-  if (data.archive_tables.length) {
-    loadArchiveTable(data.archive_tables[0].path);
-  }
-  await refreshSequences(refresh);
+/* ---------------------------------------------------------------- playback */
+function stopPlayback() {
+  state.playing = false;
+  if (state.timer) { clearTimeout(state.timer); state.timer = null; }
+  $("btnPlay").textContent = "▶ 播放";
 }
 
-async function refreshSequences(refresh = false) {
-  const suffix = refresh ? "&refresh=1" : "";
-  const data = await apiJson(`/api/sequences?runs_root=${encodeURIComponent(state.runsRoot)}${suffix}`);
-  state.sequences = data.sequences;
-  $("runsStatusBadge").textContent = data.runs_exists ? `${data.sequences.length} 组序列` : "目录不存在";
-  $("runsStatusBadge").className = data.runs_exists && data.sequences.length ? "badge ok" : "badge warn";
-
-  setOptions($("t1SeqSelect"), data.sequences);
-  setOptions($("t2SeqSelect"), data.sequences);
-
-  if (data.sequences.length) {
-    showNotice("t1Notice", "");
-    // The收尾 demo sequence is ranked first by the backend; keep that default.
-    const preferred = data.sequences.find((s) => s.label.includes("结题演示·优先")) || data.sequences[0];
-    await onTab1SequenceChanged(preferred.path);
-    await onTab2SequenceChanged(preferred.path);
-  } else {
-    showNotice(
-      "t1Notice",
-      `未在 ${escapeHtml(state.runsRoot)} 找到包含 frames.npy 的目录：可手动填入路径、点击“一键生成快速演示”，或切换到“现场实时运行”。`,
-      "warn"
-    );
-  }
-}
-
-/* =========================================================================
- * Tab 1: Simulation & Closeout Browser
- * ========================================================================= */
-async function onTab1SequenceChanged(seqDir) {
-  if (!seqDir) return;
-  try {
-    const res = await apiJson(
-      `/api/results?runs_root=${encodeURIComponent(state.runsRoot)}&sequence_dir=${encodeURIComponent(seqDir)}`
-    );
-    const auto = res.auto || {};
-    const hasAuto = Boolean(auto.predictions || auto.tracks || auto.metrics);
-
-    // When receipts pin a folder, only that folder is auto-selected; anything
-    // unpaired stays "（未选择）" so a mismatched track is never drawn.
-    const pick = (selectEl, list, autoPath) => {
-      setOptions(selectEl, list, true);
-      if (!list.length) return;
-      if (list.some((item) => item && item.shape_ok === false)) {
-        [...selectEl.options].forEach((opt, index) => {
-          if (index === 0) return;
-          const item = list[index - 1];
-          if (item && item.shape_ok === false) opt.textContent += "（帧形状不符）";
-        });
-      }
-      if (!hasAuto) {
-        selectEl.selectedIndex = 1;
-        return;
-      }
-      const idx = list.findIndex((item) => item.path === autoPath);
-      selectEl.selectedIndex = idx >= 0 ? idx + 1 : 0;
-    };
-    pick($("t1DetectSelect"), res.predictions, auto.predictions);
-    pick($("t1TrackSelect"), res.tracks, auto.tracks);
-    pick($("t1EvalSelect"), res.metrics, auto.metrics);
-    $("t1DetectManual").value = "";
-    $("t1TrackManual").value = "";
-    $("t1EvalManual").value = "";
-
-    const linkedAny = Object.values(res.linked || {}).some(Boolean);
-    const paired = hasAuto || linkedAny;
-    $("t1LinkBadge").textContent = paired ? "已自动关联" : "全部候选";
-    $("t1LinkBadge").className = paired ? "badge ok" : "badge warn";
-    await loadTab1BrowserFromControls();
-  } catch (err) {
-    showNotice("t1Notice", escapeHtml(err.message), "err");
-  }
-}
-
-async function loadTab1BrowserFromControls() {
-  const seq = $("t1SeqManual").value.trim() || $("t1SeqSelect").value;
-  const detect = $("t1DetectManual").value.trim() || $("t1DetectSelect").value;
-  const track = $("t1TrackManual").value.trim() || $("t1TrackSelect").value;
-  const evalDir = $("t1EvalManual").value.trim() || $("t1EvalSelect").value;
-  await openTab1Browser({ seq, detect, track, eval: evalDir });
-}
-
-async function openTab1Browser(paths) {
-  stopTab1Playback();
-  if (!paths.seq) return;
-  state.t1Browser = { ...paths, count: 0, index: 0 };
-  state.t1FrameCache.clear();
-  $("t1ActiveSeqLabel").textContent = paths.seq;
-
-  try {
-    const meta = await apiJson("/api/browser/meta", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sequence_dir: paths.seq,
-        detect_dir: paths.detect || null,
-        track_dir: paths.track || null,
-        evaluate_dir: paths.eval || null,
-      }),
-    });
-    state.t1Browser.count = meta.count;
-    $("t1Slider").max = Math.max(0, meta.count - 1);
-    $("t1Slider").value = 0;
-
-    if (meta.missing.length) {
-      const detail = meta.pred_state === "mismatch"
-        ? "当前检测结果的帧形状与本序列不一致"
-        : `缺少 ${escapeHtml(meta.missing.join("、"))}`;
-      showNotice(
-        "t1Notice",
-        `${detail}：相关指标显示为 —。可在“现场实时运行”跑完整链路，或展开“结果目录映射”手动指定。`,
-        "warn"
-      );
-    } else {
-      showNotice("t1Notice", "");
-    }
-
-    // KPI cards
-    $("t1DetCards").innerHTML = meta.cards
-      .map((c) => `<div class="kpi-card"><div class="kpi-label">${escapeHtml(c.label)}</div><div class="kpi-val">${escapeHtml(c.value)}</div></div>`)
-      .join("");
-    $("t1TrackCards").innerHTML = meta.tracking
-      .map((c) => `<div class="kpi-card"><div class="kpi-label">${escapeHtml(c.label)}</div><div class="kpi-val">${escapeHtml(c.value)}</div></div>`)
-      .join("");
-    $("t1MetricsMeta").textContent = meta.match_iou
-      ? `IoU ≥ ${meta.match_iou} · ${meta.metrics_path || ""}`
-      : "";
-
-    // Track charts & table
-    if (meta.track_rows && meta.track_rows.length) {
-      $("t1TracksPanel").classList.remove("hidden");
-      const frames = meta.speed_series.frames;
-      drawLineChart(
-        $("t1CoordChart"),
-        [
-          { name: "x_px", color: PALETTE[0], values: meta.track_rows.map((r) => r.x_px) },
-          { name: "y_px", color: PALETTE[2], values: meta.track_rows.map((r) => r.y_px) },
-        ],
-        frames
-      );
-      drawLineChart(
-        $("t1SpeedChart"),
-        [{ name: "速度 (px/s)", color: PALETTE[1], values: meta.speed_series.speeds }],
-        frames
-      );
-      $("t1TracksPath").textContent = meta.tracks_path || "";
-      renderTable($("t1TracksTableWrap"), ["frame", "time_s", "x_px", "y_px", "source", "segment"], meta.track_rows);
-    } else {
-      $("t1TracksPanel").classList.add("hidden");
-    }
-
-    await renderTab1Frame(0);
-    // Warm the cache pool so the first playback pass is already instant.
-    prefetchTab1([1, 2, 3, 4]);
-  } catch (err) {
-    showNotice("t1Notice", escapeHtml(err.message), "err");
-  }
-}
-
-async function fetchTab1Frame(index) {
-  const settings = getDisplaySettings();
-  const key = `${index}|${settingsKey(settings)}`;
-  if (state.t1FrameCache.has(key)) {
-    return state.t1FrameCache.get(key);
-  }
-  const data = await apiJson("/api/browser/frame", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sequence_dir: state.t1Browser.seq,
-      detect_dir: state.t1Browser.detect || null,
-      track_dir: state.t1Browser.track || null,
-      evaluate_dir: state.t1Browser.eval || null,
-      index,
-      settings,
-    }),
-  });
-  state.t1FrameCache.set(key, data);
-  return data;
-}
-
-/* Batch prefetch: one round-trip for several frames, so playback never waits
- * on a cold .npy read. */
-async function prefetchTab1(indices) {
-  const count = state.t1Browser.count;
-  if (!state.t1Browser.seq || count <= 0) return;
-  const settings = getDisplaySettings();
-  const sKey = settingsKey(settings);
-  const need = [];
-  for (const i of indices) {
-    const idx = ((i % count) + count) % count;
-    const key = `${idx}|${sKey}`;
-    if (!state.t1FrameCache.has(key) && !state.t1Inflight.has(key)) need.push(idx);
-  }
-  const unique = [...new Set(need)].slice(0, 8);
-  if (!unique.length) return;
-  unique.forEach((i) => state.t1Inflight.add(`${i}|${sKey}`));
-  try {
-    const data = await apiJson("/api/browser/frames", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sequence_dir: state.t1Browser.seq,
-        detect_dir: state.t1Browser.detect || null,
-        track_dir: state.t1Browser.track || null,
-        evaluate_dir: state.t1Browser.eval || null,
-        index: unique[0],
-        indices: unique,
-        settings,
-      }),
-    });
-    for (const frame of data.frames || []) {
-      state.t1FrameCache.set(`${frame.index}|${sKey}`, frame);
-    }
-  } catch {
-    /* prefetch is best-effort */
-  } finally {
-    unique.forEach((i) => state.t1Inflight.delete(`${i}|${sKey}`));
-    updateCacheBadge();
-  }
-}
-
-function updateCacheBadge() {
-  const sKey = settingsKey(getDisplaySettings());
-  let hits = 0;
-  for (const key of state.t1FrameCache.keys()) {
-    if (key.endsWith(`|${sKey}`)) hits += 1;
-  }
-  $("t1CacheBadge").textContent = `缓存 ${hits}/${state.t1Browser.count}`;
-}
-
-async function renderTab1Frame(index) {
-  if (!state.t1Browser.seq || state.t1Browser.count <= 0) return;
-  const clamped = Math.max(0, Math.min(state.t1Browser.count - 1, index));
-  state.t1Browser.index = clamped;
-  $("t1Slider").value = clamped;
-  $("t1FrameCounter").textContent = `${clamped} / ${state.t1Browser.count - 1}`;
-
-  const data = await fetchTab1Frame(clamped);
-  for (let i = 0; i < 4; i++) {
-    $(`quadImg${i}`).src = data.panels[i];
-  }
-  $("t1CentroidBadge").textContent = data.center
-    ? `质心 (${data.center[0].toFixed(1)}, ${data.center[1].toFixed(1)})`
-    : "本帧无阴影";
-  // Frame 0 has no history, so the difference view is legitimately flat.
-  $("quadTag1").textContent = clamped === 0 && $("dispDiff").value === "median"
-    ? "TEMP-DIFF · 首帧无历史"
-    : "TEMP-DIFF";
-  updateCacheBadge();
-
-  // Drop stale settings variants so the pool cannot grow without bound.
-  if (state.t1FrameCache.size > Math.max(24, state.t1Browser.count * 3)) {
-    const sKey = settingsKey(getDisplaySettings());
-    for (const key of [...state.t1FrameCache.keys()]) {
-      if (!key.endsWith(`|${sKey}`)) state.t1FrameCache.delete(key);
-    }
-  }
-}
-
-function stopTab1Playback() {
-  state.t1Playing = false;
-  if (state.t1Timer) {
-    clearTimeout(state.t1Timer);
-    state.t1Timer = null;
-  }
-  $("t1PlayBtn").textContent = "▶ 播放";
-}
-
-function toggleTab1Playback() {
-  if (state.t1Playing) {
-    stopTab1Playback();
-    return;
-  }
-  if (state.t1Browser.count <= 1) return;
-  state.t1Playing = true;
-  $("t1PlayBtn").textContent = "⏸ 暂停";
-
+function togglePlayback() {
+  if (state.playing) { stopPlayback(); return; }
+  if (state.count <= 1) return;
+  state.playing = true;
+  $("btnPlay").textContent = "⏸ 暂停";
   const step = async () => {
-    if (!state.t1Playing) return;
+    if (!state.playing) return;
     const t0 = performance.now();
-    const nextIdx = (state.t1Browser.index + 1) % state.t1Browser.count;
+    state.index = (state.index + 1) % state.count;
     try {
-      await renderTab1Frame(nextIdx);
-    } catch {
-      stopTab1Playback();
-      return;
-    }
-    prefetchTab1([nextIdx + 1, nextIdx + 2, nextIdx + 3, nextIdx + 4]);
-    const interval = 1000 / Number($("t1FpsSelect").value || 8);
-    state.t1Timer = setTimeout(step, Math.max(0, interval - (performance.now() - t0)));
+      await (state.view === "quad" ? renderQuad() : renderCompare());
+    } catch { stopPlayback(); return; }
+    const interval = 1000 / Number($("fps").value || 8);
+    state.timer = setTimeout(step, Math.max(0, interval - (performance.now() - t0)));
   };
   step();
 }
 
-async function exportTab1(format) {
-  if (!state.t1Browser.seq) return;
-  $("t1ExportStatus").innerHTML = `<span class="badge warn">正在渲染 ${format.toUpperCase()} ...</span>`;
+async function gotoFrame(index) {
+  stopPlayback();
+  state.index = Math.max(0, Math.min(Math.max(0, state.count - 1), index));
+  await (state.view === "quad" ? renderQuad() : renderCompare());
+  updateTransport();
+}
+
+/* ---------------------------------------------------------------- run */
+function streamJob(jobId, onDone) {
+  const log = $("log");
+  log.classList.remove("hidden");
+  log.textContent = "";
+  setBadge($("runBadge"), "运行中", "warn");
+  const es = new EventSource(`/api/jobs/${jobId}/stream`);
+  es.addEventListener("log", (ev) => {
+    const { line } = JSON.parse(ev.data);
+    log.textContent += (log.textContent ? "\n" : "") + line;
+    log.scrollTop = log.scrollHeight;
+  });
+  es.addEventListener("done", (ev) => {
+    es.close();
+    const { ok, result } = JSON.parse(ev.data);
+    setBadge($("runBadge"), ok ? "已完成" : "执行失败", ok ? "ok" : "err");
+    onDone(ok, result);
+  });
+  es.onerror = () => {
+    es.close();
+    setBadge($("runBadge"), "连接中断", "err");
+  };
+}
+
+async function runDetection() {
+  const methods = [...state.methods];
+  if (!methods.length) { alert("请至少选择一个模型"); return; }
+  if (state.kind === "video") return runVideoDetection();
+  if (!state.seq) { alert("请先选择输入序列"); return; }
+
+  $("btnRun").disabled = true;
+  setBadge($("runBadge"), "提交中", "warn");
   try {
-    const res = await apiJson("/api/browser/export", {
+    const { job_id } = await apiJson("/api/jobs/detect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sequence_dir: state.t1Browser.seq,
-        detect_dir: state.t1Browser.detect || null,
-        track_dir: state.t1Browser.track || null,
-        evaluate_dir: state.t1Browser.eval || null,
-        format,
-        settings: getDisplaySettings(),
+        sequence_dir: state.seq,
+        methods,
+        model: $("modelPath").value.trim() || null,
+        threshold: $("advThreshold").value === "" ? null : Number($("advThreshold").value),
+        min_area: Number($("advMinArea").value) || 4,
+        gate_px: Number($("advGate").value) || 12,
+        match_iou: Number($("advIou").value) || 0.5,
       }),
     });
-    $("t1ExportStatus").innerHTML = `
-      <span class="badge ok">导出成功</span>
-      <span class="mono section-sub" style="margin:0 8px;">${escapeHtml(res.path)}</span>
-      <a class="btn btn-sm btn-primary" href="${res.download_url}">下载 ${escapeHtml(res.filename)}</a>
-    `;
+    streamJob(job_id, async (ok, result) => {
+      $("btnRun").disabled = false;
+      if (!ok || !result) return;
+      const done = (result.results || []).filter((r) => r.ok && r.detect);
+      if (!done.length) return;
+      state.results = done.map((r) => ({
+        method: r.method,
+        label: r.label,
+        detect: r.detect,
+        track: r.track,
+        evaluate: r.evaluate,
+      }));
+      state.index = 0;
+      state.quadCache.clear();
+      state.active = 0;
+      await refreshMeta();
+      await renderAll();
+      $("inputHint").textContent = `已生成 ${done.length} 个模型的结果`;
+    });
   } catch (err) {
-    $("t1ExportStatus").innerHTML = `<span class="badge err">${escapeHtml(err.message)}</span>`;
+    $("btnRun").disabled = false;
+    setBadge($("runBadge"), "启动失败", "err");
+    $("log").classList.remove("hidden");
+    $("log").textContent = err.message;
   }
 }
 
-async function runLiveJob(endpoint, payload) {
-  $("t1LiveLogWrap").classList.remove("hidden");
+async function runVideoDetection() {
+  if (!state.video) { alert("请先上传视频或填写路径"); return; }
+  const crop = $("useCrop").checked
+    ? [Number($("cropX").value), Number($("cropY").value), Number($("cropW").value), Number($("cropH").value)]
+    : null;
+  $("btnRun").disabled = true;
+  setBadge($("runBadge"), "提交中", "warn");
   try {
-    const { job_id } = await apiJson(endpoint, {
+    const { job_id } = await apiJson("/api/jobs/detect_video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        video_path: state.video,
+        crop,
+        start_frame: 0,
+        max_frames: 300,
+        model: $("modelPath").value.trim() || null,
+      }),
     });
-    streamJob(job_id, $("t1LiveLog"), $("t1JobStatus"), async (ok, result) => {
-      if (!(ok && result)) return;
-      // Persist the live result straight into the browser without losing it.
-      for (const id of ["t1DetectManual", "t1TrackManual", "t1EvalManual"]) $(id).value = "";
-      await refreshSequencesSilently();
-      await openTab1Browser({
-        seq: result.sequence,
-        detect: result.predictions,
-        track: result.tracks,
-        eval: result.metrics,
-      });
+    streamJob(job_id, (ok, result) => {
+      $("btnRun").disabled = false;
+      if (!ok || !result) return;
+      state.videoResult = result;
+      renderVideoResult();
     });
   } catch (err) {
-    $("t1JobStatus").textContent = "启动失败";
-    $("t1JobStatus").className = "badge err";
-    $("t1LiveLog").textContent = err.message;
+    $("btnRun").disabled = false;
+    setBadge($("runBadge"), "启动失败", "err");
+    $("log").classList.remove("hidden");
+    $("log").textContent = err.message;
   }
 }
 
-async function refreshSequencesSilently() {
-  try {
-    const data = await apiJson(`/api/sequences?runs_root=${encodeURIComponent(state.runsRoot)}&refresh=1`);
-    state.sequences = data.sequences;
-    setOptions($("t1SeqSelect"), data.sequences);
-    setOptions($("t2SeqSelect"), data.sequences);
-  } catch {
-    /* keep current lists */
-  }
+/* ---------------------------------------------------------------- video */
+function showVideoPane() {
+  state.kind = "video";
+  state.results = [];
+  stopPlayback();
+  $("seqPane").classList.add("hidden");
+  $("videoPane").classList.remove("hidden");
+  $("methodChips").classList.add("hidden");
+  $("modelField").classList.remove("hidden");
+  $("inputHint").textContent = "输入一段雷达视频，逐帧输出检测框与叠加视频";
+  $("emptyState").classList.remove("hidden");
+  $("emptyState").textContent = "上传视频后先确认首帧与识别区域，再点「运行检测」。";
+  ["compareGrid", "quadWrap", "metricWrap", "transport", "videoResult"].forEach((id) => $(id).classList.add("hidden"));
+  $("tracksDrawer").classList.add("hidden");
+  $("cacheBadge").classList.add("hidden");
+  state.count = 0;
+  updateTransport();
+  updateCtx();
 }
 
-/* =========================================================================
- * Tab 2: Side-by-side Algorithm Comparison & Archive Charts
- * ========================================================================= */
-async function onTab2SequenceChanged(seqDir) {
-  if (!seqDir) return;
-  try {
-    const res = await apiJson(
-      `/api/results?runs_root=${encodeURIComponent(state.runsRoot)}&sequence_dir=${encodeURIComponent(seqDir)}`
-    );
-    const paths = [
-      ...state.t2ExtraPreds,
-      ...res.predictions.filter((p) => p.shape_ok !== false).map((p) => p.path),
-    ];
-    const unique = [...new Set(paths)];
-    setOptions($("t2LeftSelect"), unique);
-    setOptions($("t2RightSelect"), unique);
-    if (unique.length > 1) {
-      const left = unique[0];
-      const other = unique.findIndex((p) => p !== left);
-      if (other > 0) $("t2RightSelect").selectedIndex = other;
-    }
-    state.t2Index = 0;
-    $("t2Slider").max = 0;
-    if (!unique.length) return;
-    const meta = await apiJson("/api/browser/meta", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sequence_dir: seqDir }),
-    });
-    state.t2Count = meta.count;
-    $("t2Slider").max = Math.max(0, meta.count - 1);
-    await renderTab2Frame(0);
-  } catch (err) {
-    $("t2LeftMeta").textContent = err.message;
-  }
+function showSequencePane() {
+  state.kind = "sequence";
+  $("seqPane").classList.remove("hidden");
+  $("videoPane").classList.add("hidden");
+  $("cropSection").classList.add("hidden");
+  $("methodChips").classList.remove("hidden");
+  $("modelField").classList.toggle("hidden", !state.methods.has("learned"));
+  $("videoResult").classList.add("hidden");
+  if (state.seq) loadSequence(state.seq);
+  else updateCtx();
 }
 
-async function renderTab2Frame(index) {
-  const seq = $("t2SeqSelect").value;
-  const left = $("t2LeftSelect").value;
-  const right = $("t2RightSelect").value;
-  if (!seq || !left || !right) return;
-  const data = await apiJson("/api/compare/frame", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sequence_dir: seq,
-      left_dir: left,
-      right_dir: right,
-      index,
-      settings: getDisplaySettings(),
-    }),
-  });
-  state.t2Count = data.count;
-  state.t2Index = data.index;
-  $("t2Slider").max = Math.max(0, data.count - 1);
-  $("t2Slider").value = data.index;
-  $("t2FrameCounter").textContent = `${data.index} / ${data.count - 1}`;
-
-  $("t2LeftImg").src = data.sides[0].image;
-  $("t2LeftMeta").textContent = `连通域 ${data.sides[0].components} · 重叠 ${data.sides[0].overlap} px`;
-  $("t2RightImg").src = data.sides[1].image;
-  $("t2RightMeta").textContent = `连通域 ${data.sides[1].components} · 重叠 ${data.sides[1].overlap} px`;
-}
-
-function toggleTab2Playback() {
-  if (state.t2Playing) {
-    state.t2Playing = false;
-    clearTimeout(state.t2Timer);
-    $("t2PlayBtn").textContent = "▶ 播放";
-    return;
-  }
-  if (state.t2Count <= 1) return;
-  state.t2Playing = true;
-  $("t2PlayBtn").textContent = "⏸ 暂停";
-  const step = async () => {
-    if (!state.t2Playing) return;
-    try {
-      await renderTab2Frame((state.t2Index + 1) % state.t2Count);
-    } catch {
-      state.t2Playing = false;
-      $("t2PlayBtn").textContent = "▶ 播放";
-      return;
-    }
-    state.t2Timer = setTimeout(step, 150);
-  };
-  step();
-}
-
-async function loadArchiveTable(path) {
-  try {
-    const data = await apiJson(`/api/archive_table?path=${encodeURIComponent(path)}`);
-    drawGroupedBarChart($("t2ArchiveChart"), data.chart);
-    renderTable($("t2ArchiveTableWrap"), data.fields, data.rows);
-  } catch (err) {
-    $("t2ArchiveTableWrap").innerHTML =
-      `<div style="padding:16px;color:var(--err-text);font-size:13px;">${escapeHtml(err.message)}</div>`;
-  }
-}
-
-/* =========================================================================
- * Tab 3: Real Radar Video Inference & Interactive Canvas Cropper
- * ========================================================================= */
-function renderTab3Static(boot) {
-  const env = boot.environment;
-  const badges = [
-    { name: "FFmpeg", ok: Boolean(env.ffmpeg) },
-    { name: "PyTorch", ok: Boolean(env.torch) },
-    { name: "torchvision", ok: Boolean(env.torchvision) },
-    { name: "imageio-ffmpeg", ok: Boolean(env.imageio_ffmpeg) },
-  ];
-  $("t3EnvBadges").innerHTML = badges
-    .map((b) => `<span class="badge ${b.ok ? "ok" : "err"}">${b.ok ? "✓" : "✕"} ${b.name}</span>`)
-    .join("");
-
-  const hints = [];
-  if (!env.ffmpeg) hints.push(`缺少 FFmpeg：<code>${escapeHtml(boot.defaults.ffmpeg_install)}</code>`);
-  if (!env.torch) hints.push(`缺少 PyTorch：<code>${escapeHtml(boot.defaults.torch_install)}</code>`);
-  hints.push(`解释器：<span class="mono">${escapeHtml(env.python)}</span>`);
-  $("t3EnvHints").innerHTML = hints.join("<br>");
-
-  const info = boot.snl_model_info || {};
-  const dev = info.development || {};
-  const devPairs = [
-    ["开发复核帧数", dev.frames],
-    ["命中 TP", dev.tp],
-    ["误报 FP", dev.fp],
-    ["漏检 FN", dev.fn],
-    ["查准率", dev.precision],
-    ["召回率", dev.recall],
-    ["F1", dev.f1],
-    ["每帧虚警", dev.fp_per_frame],
-  ];
-  $("t3ModelCards").innerHTML = devPairs
-    .map(([k, v]) => `<div class="kpi-card"><div class="kpi-label">${k}</div><div class="kpi-val">${v == null ? "—" : typeof v === "number" && !Number.isInteger(v) ? v.toFixed(3) : v}</div></div>`)
-    .join("");
-  $("t3ModelMeta").textContent = info.architecture
-    ? `架构：${info.architecture} · 通道：${info.input_channels} · 阈值：${info.threshold} · Epoch：${info.epoch}`
-    : "未读取到 stacked-center.json";
-
-  setOptions($("t3PreviewSelect"), boot.preview_videos);
-  if (boot.preview_videos.length) {
-    $("t3PreviewVideo").src = `/api/media?path=${encodeURIComponent(boot.preview_videos[0])}`;
-  } else {
-    $("t3PreviewWrap").innerHTML = `<div style="padding:28px 16px;text-align:center;color:var(--text-muted);font-size:13px;background:var(--surface-tonal);border-radius:16px;">未找到归档演示视频，可在下方运行 detect-video 生成。</div>`;
-  }
-}
-
-function loadCropFirstFrame(info) {
-  state.t3VideoPath = info.video_path;
-  state.t3NaturalW = info.width;
-  state.t3NaturalH = info.height;
-  state.t3Crop = { x: 0, y: 0, w: info.width, h: info.height };
-  syncCropInputs();
-  $("t3DimLabel").textContent = `${info.width} × ${info.height}`;
-  $("t3CropSection").classList.remove("hidden");
-
+function loadCropFrame(info) {
+  state.video = info.video_path;
+  state.videoInfo = info;
+  state.crop = { x: 0, y: 0, w: info.width, h: info.height };
+  $("dimLabel").textContent = `${info.width} × ${info.height}`;
+  $("cropSection").classList.remove("hidden");
+  syncCrop();
   const img = new Image();
   img.onload = () => {
-    state.t3Img = img;
-    drawCropCanvas();
-  };
-  img.onerror = () => {
-    $("t3DimLabel").textContent = "首帧加载失败";
+    state.cropImg = img;
+    drawCrop();
   };
   img.src = `${info.first_frame_url}&t=${Date.now()}`;
+  updateCtx();
 }
 
-function syncCropInputs() {
-  $("t3CropX").value = Math.round(state.t3Crop.x);
-  $("t3CropY").value = Math.round(state.t3Crop.y);
-  $("t3CropW").value = Math.round(state.t3Crop.w);
-  $("t3CropH").value = Math.round(state.t3Crop.h);
+function syncCrop() {
+  $("cropX").value = Math.round(state.crop.x);
+  $("cropY").value = Math.round(state.crop.y);
+  $("cropW").value = Math.round(state.crop.w);
+  $("cropH").value = Math.round(state.crop.h);
 }
 
-function drawCropCanvas() {
-  const canvas = $("t3CropCanvas");
-  const img = state.t3Img;
+function drawCrop() {
+  const canvas = $("cropCanvas");
+  const img = state.cropImg;
   if (!img) return;
-  canvas.width = state.t3NaturalW;
-  canvas.height = state.t3NaturalH;
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0);
-
-  const { x, y, w, h } = state.t3Crop;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+  const { x, y, w, h } = state.crop;
+  ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.fillRect(0, 0, canvas.width, y);
   ctx.fillRect(0, y + h, canvas.width, canvas.height - (y + h));
   ctx.fillRect(0, y, x, h);
   ctx.fillRect(x + w, y, canvas.width - (x + w), h);
-
   ctx.strokeStyle = "#ea4335";
   ctx.lineWidth = Math.max(2, Math.round(canvas.width / 300));
   ctx.strokeRect(x, y, w, h);
 }
 
 function canvasPoint(ev) {
-  const canvas = $("t3CropCanvas");
+  const canvas = $("cropCanvas");
   const rect = canvas.getBoundingClientRect();
+  const w = state.videoInfo?.width || canvas.width;
+  const h = state.videoInfo?.height || canvas.height;
   return {
-    x: Math.max(0, Math.min(state.t3NaturalW, Math.round(((ev.clientX - rect.left) / rect.width) * state.t3NaturalW))),
-    y: Math.max(0, Math.min(state.t3NaturalH, Math.round(((ev.clientY - rect.top) / rect.height) * state.t3NaturalH))),
+    x: Math.max(0, Math.min(w, Math.round(((ev.clientX - rect.left) / rect.width) * w))),
+    y: Math.max(0, Math.min(h, Math.round(((ev.clientY - rect.top) / rect.height) * h))),
   };
 }
 
-/* =========================================================================
- * Event Wiring
- * ========================================================================= */
-function bindEvents() {
-  // Top tab navigation
-  document.querySelectorAll(".nav-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      stopTab1Playback();
-      state.activeTab = btn.dataset.tab;
-      document.querySelectorAll(".nav-tab").forEach((b) => b.classList.toggle("active", b === btn));
-      document.querySelectorAll(".tab-view").forEach((v) => v.classList.toggle("hidden", v.id !== state.activeTab));
-      if (state.activeTab === "tab1") updateCacheBadge();
-      if (state.activeTab === "tab2") {
-        // Bootstrap can still be finishing when the user switches early.
-        if (!$("t2LeftSelect").options.length && $("t2SeqSelect").value) {
-          onTab2SequenceChanged($("t2SeqSelect").value);
-        } else if ($("t2ArchiveSelect").value) {
-          loadArchiveTable($("t2ArchiveSelect").value);
-        }
-      }
-    });
+function renderVideoResult() {
+  const result = state.videoResult;
+  $("videoResult").classList.remove("hidden");
+  $("emptyState").classList.add("hidden");
+  ["compareGrid", "quadWrap", "metricWrap", "transport"].forEach((id) => $(id).classList.add("hidden"));
+  if (!result) {
+    $("videoOverlay").classList.add("hidden");
+    $("videoDownloads").innerHTML = "";
+    return;
+  }
+  $("videoOverlay").classList.remove("hidden");
+  if (result.overlay_url) $("videoOverlay").src = `${result.overlay_url}&t=${Date.now()}`;
+  const dl = [];
+  if (result.overlay_download) dl.push(`<a class="btn btn-sm btn-primary" href="${result.overlay_download}">下载叠加视频</a>`);
+  if (result.csv_download) dl.push(`<a class="btn btn-sm" href="${result.csv_download}">下载 predictions.csv</a>`);
+  $("videoDownloads").innerHTML = dl.join("");
+  renderTable($("videoCsvWrap"), result.csv_fields, result.csv_rows);
+}
+
+/* ---------------------------------------------------------------- archive */
+async function loadArchive(path) {
+  try {
+    const data = await apiJson(`/api/archive_table?path=${encodeURIComponent(path)}`);
+    drawBarChart($("archiveChart"), data.chart);
+    renderTable($("archiveTable"), data.fields, data.rows);
+  } catch (err) {
+    $("archiveTable").innerHTML = `<div style="padding:16px;color:var(--err);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+/* ---------------------------------------------------------------- events */
+function bind() {
+  $("kindSeg").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-kind]");
+    if (!btn) return;
+    [...$("kindSeg").children].forEach((b) => b.classList.toggle("on", b === btn));
+    if (btn.dataset.kind === "video") showVideoPane();
+    else showSequencePane();
   });
 
-  // Global runs root
-  $("btnReloadRuns").addEventListener("click", () => bootstrap($("runsRootInput").value.trim(), true));
-  $("runsRootInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") bootstrap($("runsRootInput").value.trim(), true);
+  $("seqSelect").addEventListener("change", (e) => loadSequence(e.target.value));
+  $("seqPath").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") loadSequence(e.target.value.trim());
   });
 
-  // Display settings (instant visual refresh, never clears selection)
-  ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred"].forEach((id) => {
-    $(id).addEventListener("change", () => {
-      state.t1FrameCache.clear();
-      if (state.activeTab === "tab1") renderTab1Frame(state.t1Browser.index);
-      if (state.activeTab === "tab2") renderTab2Frame(state.t2Index);
-    });
-  });
-  $("dispPixelated").addEventListener("change", () => {
-    const on = $("dispPixelated").checked;
-    $("t1QuadGrid").classList.toggle("pixelated", on);
-    $("t2Grid").classList.toggle("pixelated", on);
-  });
-
-  // Tab 1 mode switch
-  document.querySelectorAll("[data-t1mode]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.t1Mode = btn.dataset.t1mode;
-      document.querySelectorAll("[data-t1mode]").forEach((b) => b.classList.toggle("active", b === btn));
-      $("t1ModeAPanel").classList.toggle("hidden", state.t1Mode !== "modeA");
-      $("t1ModeBPanel").classList.toggle("hidden", state.t1Mode !== "modeB");
-    });
-  });
-
-  // Tab 1 selectors
-  $("t1SeqSelect").addEventListener("change", () => {
-    $("t1SeqManual").value = "";
-    onTab1SequenceChanged($("t1SeqSelect").value);
-  });
-  $("t1SeqManual").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") onTab1SequenceChanged($("t1SeqManual").value.trim());
-  });
-  ["t1DetectSelect", "t1TrackSelect", "t1EvalSelect"].forEach((id) =>
-    $(id).addEventListener("change", loadTab1BrowserFromControls)
-  );
-  ["t1DetectManual", "t1TrackManual", "t1EvalManual"].forEach((id) =>
-    $(id).addEventListener("keydown", (e) => {
-      if (e.key === "Enter") loadTab1BrowserFromControls();
-    })
-  );
-
-  // Tab 1 playback & export
-  $("t1Slider").addEventListener("input", (e) => {
-    stopTab1Playback();
-    renderTab1Frame(Number(e.target.value));
-  });
-  $("t1PlayBtn").addEventListener("click", toggleTab1Playback);
-  $("t1PrevBtn").addEventListener("click", () => {
-    stopTab1Playback();
-    renderTab1Frame(state.t1Browser.index - 1);
-  });
-  $("t1NextBtn").addEventListener("click", () => {
-    stopTab1Playback();
-    renderTab1Frame(state.t1Browser.index + 1);
-  });
-  $("t1ExportGif").addEventListener("click", () => exportTab1("gif"));
-  $("t1ExportMp4").addEventListener("click", () => exportTab1("mp4"));
-
-  // Keyboard shortcuts (Tab 1)
-  window.addEventListener("keydown", (e) => {
-    if (state.activeTab !== "tab1") return;
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
-    if (e.code === "Space") {
-      e.preventDefault();
-      toggleTab1Playback();
-    } else if (e.code === "ArrowLeft") {
-      e.preventDefault();
-      stopTab1Playback();
-      renderTab1Frame(state.t1Browser.index - 1);
-    } else if (e.code === "ArrowRight") {
-      e.preventDefault();
-      stopTab1Playback();
-      renderTab1Frame(state.t1Browser.index + 1);
-    }
-  });
-
-  // Tab 1 mode B
-  document.querySelectorAll("[data-btype]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.bType = btn.dataset.btype;
-      document.querySelectorAll("[data-btype]").forEach((b) => b.classList.toggle("active", b === btn));
-      $("bDemoForm").classList.toggle("hidden", state.bType !== "demo");
-      $("bSarForm").classList.toggle("hidden", state.bType !== "sar");
-    });
-  });
-  $("bDemoFrames").addEventListener("input", (e) => ($("bDemoFramesVal").textContent = e.target.value));
-  $("bSarMethod").addEventListener("change", () => {
-    $("bSarModelWrap").style.opacity = $("bSarMethod").value === "learned" ? "1" : "0.45";
-  });
-  $("bSarModelWrap").style.opacity = "0.45";
-
-  $("btnRunDemo").addEventListener("click", () =>
-    runLiveJob("/api/jobs/demo", {
-      config: $("bDemoConfig").value.trim(),
-      frames: Number($("bDemoFrames").value),
-    })
-  );
-  $("btnBootstrapDemo").addEventListener("click", () => {
-    document.querySelector('[data-t1mode="modeB"]').click();
-    runLiveJob("/api/jobs/demo", {
-      config: $("bDemoConfig").value.trim(),
-      frames: 16,
-    });
-  });
-  $("btnRunSar").addEventListener("click", () =>
-    runLiveJob("/api/jobs/sar", {
-      bandwidth_hz: Number($("bSarBw").value),
-      method: $("bSarMethod").value,
-      model: $("bSarModel").value.trim(),
-    })
-  );
-
-  // Tab 2
-  $("t2SeqSelect").addEventListener("change", () => onTab2SequenceChanged($("t2SeqSelect").value));
-  $("t2LeftSelect").addEventListener("change", () => renderTab2Frame(state.t2Index));
-  $("t2RightSelect").addEventListener("change", () => renderTab2Frame(state.t2Index));
-  $("t2Slider").addEventListener("input", (e) => renderTab2Frame(Number(e.target.value)));
-  $("t2PlayBtn").addEventListener("click", toggleTab2Playback);
-  $("t2ArchiveSelect").addEventListener("change", (e) => loadArchiveTable(e.target.value));
-  $("t2CompareRunBtn").addEventListener("click", async () => {
-    const seq = $("t2SeqSelect").value;
-    if (!seq) return;
-    $("t2LogWrap").classList.remove("hidden");
-    try {
-      const { job_id } = await apiJson("/api/jobs/compare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sequence_dir: seq }),
-      });
-      streamJob(job_id, $("t2LiveLog"), $("t2JobStatus"), async (ok, result) => {
-        if (ok && result?.predictions) {
-          state.t2ExtraPreds = [...result.predictions, ...state.t2ExtraPreds];
-          await onTab2SequenceChanged(seq);
-        }
-      });
-    } catch (err) {
-      $("t2JobStatus").textContent = "启动失败";
-      $("t2JobStatus").className = "badge err";
-      $("t2LiveLog").textContent = err.message;
-    }
-  });
-
-  // Tab 3
-  $("t3PreviewSelect").addEventListener("change", (e) => {
-    $("t3PreviewVideo").src = `/api/media?path=${encodeURIComponent(e.target.value)}`;
-  });
-
-  $("t3FileInput").addEventListener("change", async (e) => {
+  $("videoFile").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
-    $("t3DimLabel").textContent = "解码首帧…";
+    $("inputHint").textContent = "正在解码首帧…";
     try {
       const info = await apiJson("/api/video/upload", { method: "POST", body: fd });
-      loadCropFirstFrame(info);
+      loadCropFrame(info);
+      $("inputHint").textContent = "首帧已就绪，确认识别区域后运行检测";
     } catch (err) {
-      alert(err.message);
+      $("inputHint").textContent = err.message;
     }
   });
 
-  $("t3LoadLocalBtn").addEventListener("click", async () => {
-    const p = $("t3LocalPath").value.trim();
-    if (!p) return;
+  $("btnVideoLoad").addEventListener("click", async () => {
+    const path = $("videoPath").value.trim();
+    if (!path) return;
     try {
       const info = await apiJson("/api/video/inspect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_path: p }),
+        body: JSON.stringify({ video_path: path }),
       });
-      loadCropFirstFrame(info);
+      loadCropFrame(info);
+      $("inputHint").textContent = "首帧已就绪，确认识别区域后运行检测";
     } catch (err) {
-      alert(err.message);
+      $("inputHint").textContent = err.message;
     }
   });
 
-  // Interactive canvas crop
-  const cropCanvas = $("t3CropCanvas");
-  cropCanvas.addEventListener("mousedown", (ev) => {
+  const canvas = $("cropCanvas");
+  canvas.addEventListener("mousedown", (ev) => {
     ev.preventDefault();
-    state.t3Dragging = true;
-    state.t3DragStart = canvasPoint(ev);
-    $("t3UseCrop").checked = true;
+    state.dragging = true;
+    state.dragStart = canvasPoint(ev);
+    $("useCrop").checked = true;
   });
   window.addEventListener("mousemove", (ev) => {
-    if (!state.t3Dragging || !state.t3DragStart) return;
+    if (!state.dragging || !state.dragStart) return;
     const pt = canvasPoint(ev);
-    const x = Math.min(state.t3DragStart.x, pt.x);
-    const y = Math.min(state.t3DragStart.y, pt.y);
-    const w = Math.max(2, Math.abs(pt.x - state.t3DragStart.x));
-    const h = Math.max(2, Math.abs(pt.y - state.t3DragStart.y));
-    state.t3Crop = {
-      x,
-      y,
-      w: Math.min(w, state.t3NaturalW - x),
-      h: Math.min(h, state.t3NaturalH - y),
+    const x = Math.min(state.dragStart.x, pt.x);
+    const y = Math.min(state.dragStart.y, pt.y);
+    state.crop = {
+      x, y,
+      w: Math.max(2, Math.abs(pt.x - state.dragStart.x)),
+      h: Math.max(2, Math.abs(pt.y - state.dragStart.y)),
     };
-    syncCropInputs();
-    drawCropCanvas();
+    syncCrop();
+    drawCrop();
   });
-  window.addEventListener("mouseup", () => {
-    state.t3Dragging = false;
-  });
+  window.addEventListener("mouseup", () => { state.dragging = false; });
 
-  ["t3CropX", "t3CropY", "t3CropW", "t3CropH"].forEach((id) => {
+  ["cropX", "cropY", "cropW", "cropH"].forEach((id) => {
     $(id).addEventListener("input", () => {
-      state.t3Crop = {
-        x: Math.max(0, Number($("t3CropX").value) || 0),
-        y: Math.max(0, Number($("t3CropY").value) || 0),
-        w: Math.max(2, Number($("t3CropW").value) || 2),
-        h: Math.max(2, Number($("t3CropH").value) || 2),
+      state.crop = {
+        x: Math.max(0, Number($("cropX").value) || 0),
+        y: Math.max(0, Number($("cropY").value) || 0),
+        w: Math.max(2, Number($("cropW").value) || 2),
+        h: Math.max(2, Number($("cropH").value) || 2),
       };
-      drawCropCanvas();
+      drawCrop();
     });
   });
-
-  $("t3ResetCropBtn").addEventListener("click", () => {
-    state.t3Crop = { x: 0, y: 0, w: state.t3NaturalW, h: state.t3NaturalH };
-    $("t3UseCrop").checked = false;
-    syncCropInputs();
-    drawCropCanvas();
+  $("btnResetCrop").addEventListener("click", () => {
+    state.crop = { x: 0, y: 0, w: state.videoInfo?.width || 0, h: state.videoInfo?.height || 0 };
+    $("useCrop").checked = false;
+    syncCrop();
+    drawCrop();
   });
 
-  $("t3RunBtn").addEventListener("click", async () => {
-    const vpath = state.t3VideoPath || $("t3LocalPath").value.trim();
-    if (!vpath) {
-      alert("请先上传视频或填写本地视频路径");
-      return;
+  $("methodChips").addEventListener("click", (ev) => {
+    const chip = ev.target.closest("button[data-method]");
+    if (!chip) return;
+    const method = chip.dataset.method;
+    if (state.methods.has(method)) {
+      if (state.methods.size === 1) return;
+      state.methods.delete(method);
+      chip.classList.remove("on");
+    } else {
+      state.methods.add(method);
+      chip.classList.add("on");
     }
-    const crop = $("t3UseCrop").checked
-      ? [
-          Number($("t3CropX").value),
-          Number($("t3CropY").value),
-          Number($("t3CropW").value),
-          Number($("t3CropH").value),
-        ]
-      : null;
-    $("t3LogWrap").classList.remove("hidden");
+    $("modelField").classList.toggle("hidden", !state.methods.has("learned"));
+  });
+
+  $("btnRun").addEventListener("click", runDetection);
+
+  $("viewSeg").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-view]");
+    if (!btn) return;
+    [...$("viewSeg").children].forEach((b) => b.classList.toggle("on", b === btn));
+    state.view = btn.dataset.view;
+    stopPlayback();
+    renderAll();
+  });
+
+  $("btnDisplay").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    $("displayPop").classList.toggle("hidden");
+  });
+  document.addEventListener("click", (ev) => {
+    if (!ev.target.closest(".pop-wrap")) $("displayPop").classList.add("hidden");
+  });
+  ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      state.quadCache.clear();
+      if (state.results.length) renderAll();
+    });
+  });
+  $("dispPixelated").addEventListener("change", () => {
+    const on = $("dispPixelated").checked;
+    $("compareGrid").classList.toggle("pixelated", on);
+    $("quadGrid").classList.toggle("pixelated", on);
+  });
+
+  $("quadSource").addEventListener("change", (e) => {
+    state.active = Number(e.target.value) || 0;
+    state.quadCache.clear();
+    renderQuad();
+  });
+
+  $("btnPlay").addEventListener("click", togglePlayback);
+  $("btnPrev").addEventListener("click", () => gotoFrame(state.index - 1));
+  $("btnNext").addEventListener("click", () => gotoFrame(state.index + 1));
+  $("slider").addEventListener("input", (e) => gotoFrame(Number(e.target.value)));
+
+  window.addEventListener("keydown", (e) => {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+    if (!state.results.length) return;
+    if (e.code === "Space") { e.preventDefault(); togglePlayback(); }
+    else if (e.code === "ArrowLeft") { e.preventDefault(); gotoFrame(state.index - 1); }
+    else if (e.code === "ArrowRight") { e.preventDefault(); gotoFrame(state.index + 1); }
+  });
+
+  $("archiveSelect").addEventListener("change", (e) => loadArchive(e.target.value));
+
+  const exportQuad = async (format) => {
+    const result = state.results[state.active] || state.results[0];
+    if (!result) return;
+    $("exportStatus").innerHTML = `<span class="badge warn">正在渲染 ${format.toUpperCase()}…</span>`;
     try {
-      const { job_id } = await apiJson("/api/jobs/detect_video", {
+      const res = await apiJson("/api/browser/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          video_path: vpath,
-          crop,
-          start_frame: Number($("t3StartFrame").value) || 0,
-          max_frames: Number($("t3MaxFrames").value) || 24,
-          model: $("t3ModelPath").value.trim() || null,
+          sequence_dir: state.seq,
+          detect_dir: result.detect,
+          track_dir: result.track || null,
+          evaluate_dir: result.evaluate || null,
+          format,
+          settings: getSettings(),
         }),
       });
-      streamJob(job_id, $("t3LiveLog"), $("t3JobStatus"), (ok, result) => {
-        if (!ok || !result) return;
-        $("t3ResultWrap").classList.remove("hidden");
-        const dl = [];
-        if (result.overlay_download) dl.push(`<a class="btn btn-sm btn-primary" href="${result.overlay_download}">下载 overlay.mp4</a>`);
-        if (result.csv_download) dl.push(`<a class="btn btn-sm" href="${result.csv_download}">下载 predictions.csv</a>`);
-        $("t3Downloads").innerHTML = dl.join("");
-        if (result.overlay_url) $("t3ResultVideo").src = `${result.overlay_url}&t=${Date.now()}`;
-        renderTable($("t3CsvTableWrap"), result.csv_fields, result.csv_rows);
-        $("t3VideoJson").textContent = JSON.stringify(result.video_json || {}, null, 2);
-      });
+      $("exportStatus").innerHTML =
+        `<span class="badge ok">已导出</span> <a class="btn btn-sm btn-primary" href="${res.download_url}">下载 ${escapeHtml(res.filename)}</a>`;
     } catch (err) {
-      $("t3JobStatus").textContent = "启动失败";
-      $("t3JobStatus").className = "badge err";
-      $("t3LiveLog").textContent = err.message;
+      $("exportStatus").innerHTML = `<span class="badge err">${escapeHtml(err.message)}</span>`;
     }
-  });
+  };
+  $("btnGif").addEventListener("click", () => exportQuad("gif"));
+  $("btnMp4").addEventListener("click", () => exportQuad("mp4"));
 }
 
-bindEvents();
-bootstrap().catch((err) => showNotice("t1Notice", `初始化失败：${escapeHtml(err.message)}`, "err"));
+bind();
+boot().catch((err) => {
+  const el = $("inputHint");
+  if (el) el.textContent = `初始化失败：${err.message}`;
+});

@@ -3,15 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ka Video SAR · 动目标阴影工作台</title>
+  <title>Ka 视频 SAR · 动目标阴影检测</title>
   <style>
     :root {
-      /* Google Material Design 3 Light Palette */
       --bg: #f0f4f9;
       --surface: #ffffff;
       --surface-tonal: #f8fafd;
-      --surface-variant: #e9eef6;
-      --surface-hover: #dde3ea;
+      --surface-sunken: #eef2f8;
       --outline: #dde3ea;
       --outline-strong: #c4c7c5;
 
@@ -24,1077 +22,519 @@
       --primary-container: #d3e3fd;
       --on-primary-container: #041e49;
 
+      --ok: #1e8e3e;
       --ok-bg: #e6f4ea;
-      --ok-text: #137333;
+      --warn: #b06000;
       --warn-bg: #fef7e0;
-      --warn-text: #b06000;
+      --err: #c5221f;
       --err-bg: #fce8e6;
-      --err-text: #c5221f;
 
-      --radius-xl: 24px;
-      --radius-lg: 18px;
-      --radius-md: 12px;
-      --radius-pill: 9999px;
+      --r-lg: 24px;
+      --r-md: 14px;
+      --r-sm: 10px;
+      --pill: 9999px;
 
-      --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.06), 0 1px 3px 1px rgba(60, 64, 67, 0.04);
-      --shadow-md: 0 2px 6px rgba(60, 64, 67, 0.08), 0 4px 12px rgba(60, 64, 67, 0.04);
+      --shadow: 0 1px 2px rgba(60, 64, 67, 0.06), 0 1px 3px 1px rgba(60, 64, 67, 0.04);
+      --shadow-lift: 0 2px 8px rgba(60, 64, 67, 0.10), 0 6px 18px rgba(60, 64, 67, 0.06);
 
-      --font-sans: "Google Sans", "Product Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      --font-mono: "JetBrains Mono", "Roboto Mono", "Cascadia Code", Consolas, monospace;
+      --sans: "Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --mono: "JetBrains Mono", "Roboto Mono", Consolas, monospace;
     }
-
     * { box-sizing: border-box; }
     html, body {
-      margin: 0;
-      padding: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font-sans);
-      font-size: 14px;
-      line-height: 1.5;
+      margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font-family: var(--sans); font-size: 14px; line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Top Bar */
+    /* ---------- top bar ---------- */
     .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 40;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
       padding: 12px 28px;
-      background: rgba(240, 244, 249, 0.86);
+      background: rgba(240, 244, 249, 0.88);
       backdrop-filter: blur(14px);
     }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0;
-    }
+    .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
     .brand-icon {
-      width: 34px;
-      height: 34px;
-      border-radius: 12px;
+      width: 32px; height: 32px; border-radius: 11px; flex-shrink: 0;
       background: linear-gradient(135deg, #1a73e8, #0b57d0);
-      display: grid;
-      place-items: center;
-      color: #fff;
-      box-shadow: 0 2px 8px rgba(11, 87, 208, 0.25);
-      flex-shrink: 0;
+      display: grid; place-items: center; color: #fff;
+      box-shadow: 0 2px 8px rgba(11, 87, 208, 0.24);
     }
-    .brand-text h1 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: -0.2px;
-      color: var(--text);
+    .brand h1 { margin: 0; font-size: 15.5px; font-weight: 600; letter-spacing: -0.2px; }
+    .ctx {
+      display: inline-flex; align-items: center; gap: 8px; max-width: 62%;
+      padding: 7px 16px; border-radius: var(--pill);
+      background: var(--surface); box-shadow: var(--shadow);
+      font-size: 12.5px; color: var(--text-secondary);
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     }
-    .brand-text p {
-      margin: 0;
-      font-size: 11.5px;
-      color: var(--text-muted);
-    }
+    .ctx b { color: var(--text); font-weight: 600; }
+    .ctx .sep { color: var(--outline-strong); margin: 0 2px; }
+    .ctx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--outline-strong); flex-shrink: 0; }
+    .ctx.live .ctx-dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(30, 142, 62, 0.14); }
 
-    /* Pill Navigation */
-    .nav-tabs {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: var(--surface);
-      padding: 4px;
-      border-radius: var(--radius-pill);
-      box-shadow: var(--shadow-sm);
-    }
-    .nav-tab {
-      border: none;
-      background: transparent;
-      color: var(--text-secondary);
-      cursor: pointer;
-      padding: 8px 18px;
-      border-radius: var(--radius-pill);
-      font-family: inherit;
-      font-size: 13.5px;
-      font-weight: 500;
-      transition: background 0.18s ease, color 0.18s ease;
-    }
-    .nav-tab:hover { background: var(--surface-tonal); color: var(--text); }
-    .nav-tab.active {
-      background: var(--primary-container);
-      color: var(--on-primary-container);
-      font-weight: 600;
-    }
+    /* ---------- page ---------- */
+    main { max-width: 1560px; margin: 0 auto; padding: 6px 28px 56px; display: flex; flex-direction: column; gap: 18px; }
 
-    /* Main Workspace Layout */
-    .shell {
-      max-width: 1520px;
-      margin: 0 auto;
-      padding: 8px 28px 48px;
-      display: grid;
-      grid-template-columns: 288px minmax(0, 1fr);
-      gap: 22px;
-      align-items: start;
+    .step {
+      background: var(--surface); border-radius: var(--r-lg);
+      box-shadow: var(--shadow); border: 1px solid rgba(221, 227, 234, 0.6);
+      padding: 18px 22px 20px;
     }
+    .step-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    .num {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      background: var(--primary-container); color: var(--on-primary-container);
+      display: grid; place-items: center; font-size: 12.5px; font-weight: 700;
+    }
+    .step-head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.1px; }
+    .step-hint { font-size: 12px; color: var(--text-muted); }
+    .step-head .spacer { flex: 1; }
 
-    /* Sidebar Floating Cards */
-    .sidebar {
-      position: sticky;
-      top: 74px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+    /* ---------- controls ---------- */
+    .seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--pill); padding: 3px; gap: 3px; }
+    .seg button {
+      border: none; background: transparent; color: var(--text-secondary);
+      padding: 6px 15px; border-radius: var(--pill); cursor: pointer;
+      font-family: inherit; font-size: 12.5px; font-weight: 500; transition: 0.15s;
     }
+    .seg button:hover { color: var(--text); }
+    .seg button.on { background: var(--surface); color: var(--primary); font-weight: 600; box-shadow: 0 1px 3px rgba(60, 64, 67, 0.14); }
 
-    .card {
-      background: var(--surface);
-      border-radius: var(--radius-xl);
-      padding: 20px 22px;
-      box-shadow: var(--shadow-sm);
-      border: 1px solid rgba(221, 227, 234, 0.65);
-    }
-    .card-compact { padding: 16px 18px; border-radius: var(--radius-lg); }
-
-    .section-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-    .section-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-      margin: 0;
-      letter-spacing: -0.1px;
-    }
-    .section-sub {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    /* Form Controls - M3 Filled Rounded Style */
-    .field { margin-bottom: 12px; }
-    .field:last-child { margin-bottom: 0; }
-    .field label {
-      display: block;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
+    .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .field > span { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); }
 
     input[type="text"], input[type="number"], select {
-      width: 100%;
-      background: var(--bg);
-      color: var(--text);
-      border: 1.5px solid transparent;
-      border-radius: var(--radius-md);
-      padding: 9px 12px;
-      font-family: inherit;
-      font-size: 13px;
-      outline: none;
+      width: 100%; background: var(--surface-sunken); color: var(--text);
+      border: 1.5px solid transparent; border-radius: var(--r-sm);
+      padding: 9px 12px; font-family: inherit; font-size: 12.5px; outline: none;
       transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
     }
-    input[type="text"]:hover, input[type="number"]:hover, select:hover {
-      background: var(--surface-variant);
-    }
-    input[type="text"]:focus, input[type="number"]:focus, select:focus {
-      background: var(--surface);
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.12);
-    }
+    input:hover, select:hover { background: #e9eef6; }
+    input:focus, select:focus { background: var(--surface); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.12); }
 
-    /* Material 3 Toggle Switch */
-    .switch-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 6px 0;
-      cursor: pointer;
-      user-select: none;
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
-    .switch-label { display: flex; align-items: center; gap: 7px; }
-    .switch-row input[type="checkbox"] {
-      appearance: none;
-      -webkit-appearance: none;
-      width: 38px;
-      height: 22px;
-      background: #dce1e8;
-      border-radius: var(--radius-pill);
-      position: relative;
-      cursor: pointer;
-      transition: background 0.2s ease;
-      flex-shrink: 0;
-      margin: 0;
-    }
-    .switch-row input[type="checkbox"]::after {
-      content: "";
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #ffffff;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-      transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
-    }
-    .switch-row input[type="checkbox"]:checked {
-      background: var(--primary);
-    }
-    .switch-row input[type="checkbox"]:checked::after {
-      transform: translateX(16px);
-    }
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-
-    /* Buttons */
     .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 18px;
-      border-radius: var(--radius-pill);
-      border: 1px solid var(--outline-strong);
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
-      transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 18px; border-radius: var(--pill);
+      border: 1px solid var(--outline-strong); background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+      text-decoration: none; white-space: nowrap; transition: 0.15s;
     }
     .btn:hover { background: var(--surface-tonal); border-color: #9aa0a6; }
     .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-    .btn-primary {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: #ffffff;
+    .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); box-shadow: 0 2px 8px rgba(11, 87, 208, 0.28); }
+    .btn-sm { padding: 6px 13px; font-size: 12px; }
+    .icon-btn {
+      width: 32px; height: 32px; padding: 0; border-radius: 50%; border: none;
+      background: transparent; color: var(--text-secondary); cursor: pointer;
+      display: inline-grid; place-items: center; font-size: 12px; transition: background 0.15s;
     }
-    .btn-primary:hover {
-      background: var(--primary-hover);
-      border-color: var(--primary-hover);
-      box-shadow: 0 2px 6px rgba(11, 87, 208, 0.28);
-    }
-
-    .btn-tonal {
-      background: var(--primary-container);
-      border-color: transparent;
-      color: var(--on-primary-container);
-    }
-    .btn-tonal:hover { background: #c2d7fa; }
-
-    .btn-sm { padding: 6px 14px; font-size: 12.5px; }
-    .btn-icon {
-      width: 34px;
-      height: 34px;
-      padding: 0;
-      border-radius: 50%;
-      border: none;
-      background: transparent;
-      color: var(--text-secondary);
-      cursor: pointer;
-      display: inline-grid;
-      place-items: center;
-      font-size: 12px;
-      transition: background 0.15s;
-    }
-    .btn-icon:hover { background: var(--surface-hover); color: var(--text); }
-    .btn-play-circle {
-      padding: 0 18px;
-      height: 38px;
-      border-radius: var(--radius-pill);
-      border: none;
-      background: var(--primary);
-      color: #fff;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
+    .icon-btn:hover { background: var(--surface); color: var(--text); }
+    .play-btn {
+      height: 36px; padding: 0 18px; border-radius: var(--pill); border: none;
+      background: var(--primary); color: #fff; font-family: inherit; font-size: 12.5px;
+      font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
       box-shadow: 0 2px 6px rgba(11, 87, 208, 0.22);
-      transition: background 0.15s;
     }
-    .btn-play-circle:hover { background: var(--primary-hover); }
+    .play-btn:hover { background: var(--primary-hover); }
 
-    /* Segmented Pill */
-    .pill-group {
-      display: inline-flex;
-      background: var(--bg);
-      border-radius: var(--radius-pill);
-      padding: 4px;
-      gap: 4px;
-    }
-    .pill-btn {
-      border: none;
-      background: transparent;
-      color: var(--text-secondary);
-      padding: 6px 16px;
-      border-radius: var(--radius-pill);
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      transition: 0.15s;
-    }
-    .pill-btn:hover { color: var(--text); }
-    .pill-btn.active {
-      background: var(--surface);
-      color: var(--primary);
-      font-weight: 600;
-      box-shadow: 0 1px 3px rgba(60, 64, 67, 0.12);
-    }
-
-    /* Badges & Notices */
     .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 11px;
-      border-radius: var(--radius-pill);
-      font-size: 12px;
-      font-weight: 500;
-      background: var(--bg);
-      color: var(--text-secondary);
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 11px; border-radius: var(--pill);
+      font-size: 11.5px; font-weight: 500; background: var(--surface-sunken); color: var(--text-secondary);
     }
-    .badge.ok { background: var(--ok-bg); color: var(--ok-text); }
-    .badge.warn { background: var(--warn-bg); color: var(--warn-text); }
-    .badge.err { background: var(--err-bg); color: var(--err-text); }
+    .badge.ok { background: var(--ok-bg); color: var(--ok); }
+    .badge.warn { background: var(--warn-bg); color: var(--warn); }
+    .badge.err { background: var(--err-bg); color: var(--err); }
 
-    .notice {
-      padding: 12px 16px;
-      border-radius: var(--radius-lg);
-      font-size: 13px;
-      margin-bottom: 16px;
-      background: #e8f0fe;
-      color: #174ea6;
-      line-height: 1.55;
+    /* ---------- model chips ---------- */
+    .chips { display: flex; gap: 10px; flex-wrap: wrap; }
+    .chip {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+      min-width: 158px; padding: 10px 16px; border-radius: var(--r-md);
+      border: 1.5px solid var(--outline); background: var(--surface);
+      cursor: pointer; font-family: inherit; text-align: left; transition: 0.15s;
     }
-    .notice.warn { background: var(--warn-bg); color: #8f4f00; }
-    .notice.err { background: var(--err-bg); color: var(--err-text); }
+    .chip b { font-size: 13px; font-weight: 600; color: var(--text); }
+    .chip span { font-size: 11.5px; color: var(--text-muted); }
+    .chip:hover { border-color: #9aa0a6; }
+    .chip.on { border-color: var(--primary); background: #eef4fe; }
+    .chip.on b { color: var(--primary); }
 
-    /* Grids & Helpers */
-    .stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    details.adv { margin-top: 12px; border-top: 1px solid var(--outline); padding-top: 10px; }
+    details.adv summary { cursor: pointer; font-size: 12px; color: var(--text-muted); list-style: none; }
+    details.adv summary::-webkit-details-marker { display: none; }
+    details.adv summary::after { content: " ▾"; }
+    details.adv[open] summary::after { content: " ▴"; }
+    details.adv > .grid-4 { margin-top: 10px; }
 
-    /* Four-Panel SAR Viewport */
-    .quad-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
+    .run-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+
+    .terminal {
+      margin: 12px 0 0; background: #1e222a; color: #d7e3f4; border-radius: var(--r-md);
+      padding: 12px 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+      max-height: 190px; overflow: auto; white-space: pre-wrap; word-break: break-all;
     }
-    .quad-tile {
-      background: var(--surface-tonal);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-lg);
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+
+    /* ---------- results ---------- */
+    .compare-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+    .col {
+      margin: 0; border: 1px solid var(--outline); border-radius: var(--r-md);
+      background: var(--surface-tonal); overflow: hidden; display: flex; flex-direction: column;
     }
-    .quad-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 4px;
-      font-size: 12.5px;
-      font-weight: 500;
-      color: var(--text-secondary);
+    .col-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--outline);
     }
-    .quad-chip {
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      font-weight: 600;
-      color: var(--primary);
-      background: var(--primary-container);
-      padding: 2px 8px;
-      border-radius: var(--radius-pill);
+    .col-head b { font-size: 13px; font-weight: 600; }
+    .col-head .mono { font-size: 11.5px; color: var(--text-muted); }
+    /* Auto height keeps portrait frames from sitting inside wide black bars. */
+    .col-img {
+      background: #0d1117; display: flex; align-items: center; justify-content: center;
+      min-height: 260px; max-height: 560px;
     }
-    .quad-viewport {
-      background: #0d1117;
-      border-radius: 12px;
-      overflow: hidden;
-      height: clamp(240px, 38vh, 420px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .quad-viewport img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: block;
-    }
+    .col-img img { max-width: 100%; max-height: 560px; width: auto; height: auto; display: block; }
+    .compare-grid.single { max-width: 780px; margin: 0 auto; }
     .pixelated img { image-rendering: pixelated; }
+    .col-foot {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 9px 14px; font-size: 11.5px; color: var(--text-muted); background: var(--surface);
+    }
+    .col-foot .score { font-family: var(--mono); color: var(--text-secondary); }
 
-    /* Floating Pill Playback Bar */
+    .quad-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .tile { border: 1px solid var(--outline); border-radius: var(--r-md); background: var(--surface-tonal); padding: 8px; }
+    .tile-head { display: flex; justify-content: space-between; padding: 0 4px 8px; font-size: 12px; color: var(--text-secondary); }
+    .tile-head em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--primary); }
+    .tile-img { background: #0d1117; border-radius: 10px; height: clamp(220px, 30vh, 380px); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .tile-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
     .transport {
-      margin-top: 14px;
-      padding: 8px 14px;
-      background: var(--bg);
-      border-radius: var(--radius-pill);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-top: 14px; padding: 8px 14px; border-radius: var(--pill); background: var(--surface-sunken);
     }
-    .scrubber {
-      flex: 1;
-      min-width: 160px;
-      accent-color: var(--primary);
-      cursor: pointer;
-      height: 4px;
-    }
-    .transport select {
-      width: auto;
-      background: var(--surface);
-      border-radius: var(--radius-pill);
-      padding: 6px 12px;
-      font-size: 12.5px;
+    .scrubber { flex: 1; min-width: 160px; accent-color: var(--primary); cursor: pointer; }
+    .transport select { width: auto; background: var(--surface); border-radius: var(--pill); padding: 6px 12px; }
+
+    table.metrics { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 16px; }
+    table.metrics th, table.metrics td { padding: 9px 14px; text-align: right; border-bottom: 1px solid #eef2f6; }
+    table.metrics th:first-child, table.metrics td:first-child { text-align: left; color: var(--text-secondary); font-weight: 500; }
+    table.metrics thead th { background: var(--surface-sunken); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+    table.metrics thead th:first-child { border-top-left-radius: 10px; }
+    table.metrics thead th:last-child { border-top-right-radius: 10px; }
+    table.metrics td.val { font-family: var(--mono); font-size: 13.5px; font-weight: 600; }
+    table.metrics .delta { font-family: var(--mono); font-size: 11px; margin-left: 6px; }
+    table.metrics .delta.up { color: var(--ok); }
+    table.metrics .delta.down { color: var(--err); }
+    table.metrics .delta.flat { color: var(--text-muted); }
+
+    .empty {
+      padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 13px;
+      background: var(--surface-tonal); border-radius: var(--r-md); border: 1px dashed var(--outline);
     }
 
-    /* KPI Strip */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
-      gap: 10px;
+    /* display popover */
+    .pop-wrap { position: relative; }
+    .popover {
+      position: absolute; right: 0; top: 38px; z-index: 30; width: 250px;
+      background: var(--surface); border-radius: var(--r-md); box-shadow: var(--shadow-lift);
+      border: 1px solid var(--outline); padding: 14px 16px;
     }
-    .kpi-card {
-      background: var(--surface-tonal);
-      border-radius: 16px;
-      padding: 12px 14px;
-      border: 1px solid rgba(221, 227, 234, 0.6);
-      transition: background 0.15s;
+    .popover .field { margin-bottom: 10px; }
+    .switch-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 5px 0; font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
     }
-    .kpi-card:hover { background: var(--bg); }
-    .kpi-label {
-      font-size: 11.5px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
+    .switch-row input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none; width: 34px; height: 20px;
+      background: #dce1e8; border-radius: var(--pill); position: relative;
+      cursor: pointer; transition: background 0.2s; flex-shrink: 0; margin: 0;
     }
-    .kpi-val {
-      font-size: 20px;
-      font-weight: 600;
-      font-family: var(--font-mono);
-      color: var(--text);
-      letter-spacing: -0.3px;
+    .switch-row input[type="checkbox"]::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px;
+      border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .switch-row input[type="checkbox"]:checked { background: var(--primary); }
+    .switch-row input[type="checkbox"]:checked::after { transform: translateX(14px); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+    /* video result */
+    video { width: 100%; max-height: 520px; border-radius: var(--r-md); background: #0d1117; display: block; }
+    .file-box { background: var(--surface-sunken); border: 1.5px dashed var(--outline-strong); border-radius: var(--r-sm); padding: 6px 10px; }
+    .file-box:hover { border-color: var(--primary); }
+    input[type="file"] { width: 100%; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+    input[type="file"]::file-selector-button {
+      margin-right: 10px; padding: 5px 14px; border-radius: var(--pill); border: none;
+      background: var(--primary-container); color: var(--on-primary-container);
+      font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
     }
 
-    /* Collapsible Drawer */
+    .crop-stage { background: #0d1117; border-radius: var(--r-md); padding: 8px; display: flex; justify-content: center; }
+    #cropCanvas { max-width: 100%; max-height: 360px; cursor: crosshair; display: block; border-radius: 8px; }
+
     details.drawer {
-      background: var(--surface-tonal);
-      border-radius: 16px;
-      padding: 10px 16px;
-      margin-top: 12px;
-      border: 1px solid var(--outline);
+      background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow);
+      border: 1px solid rgba(221, 227, 234, 0.6); padding: 14px 22px;
     }
     details.drawer summary {
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      user-select: none;
-      list-style: none;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+      cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text-secondary);
+      list-style: none; display: flex; align-items: center; justify-content: space-between;
     }
     details.drawer summary::-webkit-details-marker { display: none; }
-    details.drawer summary::after {
-      content: "展开";
-      font-size: 12px;
-      color: var(--primary);
-      flex-shrink: 0;
-    }
-    details.drawer[open] summary { margin-bottom: 12px; color: var(--text); }
+    details.drawer summary::after { content: "展开"; font-size: 12px; font-weight: 400; color: var(--primary); }
     details.drawer[open] summary::after { content: "收起"; }
+    details.drawer[open] summary { margin-bottom: 14px; }
 
-    /* Clean Terminal (Colab Style) */
-    .terminal {
-      background: #1e222a;
-      color: #d7e3f4;
-      border-radius: 16px;
-      padding: 14px 16px;
-      font-family: var(--font-mono);
-      font-size: 12px;
-      line-height: 1.55;
-      max-height: 220px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-
-    /* Tables & Canvas Charts */
-    .table-wrap {
-      max-height: 280px;
-      overflow: auto;
-      border: 1px solid var(--outline);
-      border-radius: 16px;
-      background: var(--surface);
-    }
-    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-    th, td {
-      padding: 9px 14px;
-      border-bottom: 1px solid #eef2f6;
-      text-align: left;
-      white-space: nowrap;
-    }
-    th {
-      position: sticky;
-      top: 0;
-      background: var(--surface-tonal);
-      color: var(--text-secondary);
-      font-weight: 600;
-      font-size: 12px;
-    }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: var(--surface-tonal); }
-
-    canvas.chart-canvas {
-      width: 100%;
-      height: 195px;
-      display: block;
-      background: var(--surface-tonal);
-      border: 1px solid var(--outline);
-      border-radius: 16px;
-    }
-
-    .crop-stage {
-      background: #0d1117;
-      border-radius: 16px;
-      overflow: hidden;
-      display: flex;
-      justify-content: center;
-      padding: 8px;
-    }
-    #t3CropCanvas { max-width: 100%; max-height: 400px; cursor: crosshair; display: block; border-radius: 8px; }
-    video {
-      width: 100%;
-      max-height: 380px;
-      border-radius: 16px;
-      background: #0d1117;
-      display: block;
-    }
-
-    /* File Picker Polish */
-    .file-box {
-      background: var(--bg);
-      border: 1.5px dashed var(--outline-strong);
-      border-radius: var(--radius-md);
-      padding: 7px 12px;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .file-box:hover { border-color: var(--primary); background: var(--surface-variant); }
-    input[type="file"] { width: 100%; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
-    input[type="file"]::file-selector-button {
-      margin-right: 10px;
-      padding: 6px 15px;
-      border-radius: var(--radius-pill);
-      border: none;
-      background: var(--primary-container);
-      color: var(--on-primary-container);
-      font-family: inherit;
-      font-size: 12.5px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    input[type="file"]::file-selector-button:hover { background: #c2d7fa; }
+    canvas.chart { width: 100%; height: 190px; display: block; background: var(--surface-tonal); border-radius: var(--r-md); border: 1px solid var(--outline); }
+    .table-wrap { max-height: 260px; overflow: auto; border: 1px solid var(--outline); border-radius: var(--r-md); }
+    table.plain { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.plain th, table.plain td { padding: 8px 12px; border-bottom: 1px solid #eef2f6; text-align: left; white-space: nowrap; }
+    table.plain th { position: sticky; top: 0; background: var(--surface-tonal); color: var(--text-secondary); font-weight: 600; }
 
     .hidden { display: none !important; }
 
-    @media (max-width: 1060px) {
-      .topbar { flex-direction: column; align-items: flex-start; padding: 12px 16px; }
-      .shell { grid-template-columns: 1fr; padding: 8px 16px 36px; }
-      .sidebar { position: static; }
-      .quad-grid, .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    @media (max-width: 1020px) {
+      .topbar { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 16px; }
+      .ctx { max-width: 100%; }
+      main { padding: 6px 16px 40px; }
+      .grid-2, .grid-4 { grid-template-columns: 1fr; }
+      .quad-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <!-- Header -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-icon" aria-hidden="true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <circle cx="12" cy="12" r="9" opacity="0.45"></circle>
           <circle cx="12" cy="12" r="4.5"></circle>
           <path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path>
         </svg>
       </div>
-      <div class="brand-text">
-        <h1>Ka 频段视频 SAR 阴影工作台</h1>
-        <p>显示增强仅作用于视觉预览 · 不改变底层检测输入</p>
-      </div>
+      <h1>Ka 视频 SAR · 动目标阴影检测</h1>
     </div>
-
-    <nav class="nav-tabs" role="tablist">
-      <button class="nav-tab active" data-tab="tab1">仿真与结题闭环</button>
-      <button class="nav-tab" data-tab="tab2">算法同屏对照</button>
-      <button class="nav-tab" data-tab="tab3">实测雷达推理</button>
-    </nav>
+    <div class="ctx" id="ctxChip">
+      <span class="ctx-dot"></span>
+      <span id="ctxText">未选择输入</span>
+    </div>
   </header>
 
-  <div class="shell">
-    <!-- Left Floating Rail -->
-    <aside class="sidebar">
-      <div class="card card-compact">
-        <div class="section-head" style="margin-bottom:10px;">
-          <h2 class="section-title">显示增强</h2>
-          <span class="badge">仅预览</span>
+  <main>
+    <!-- ============ 1 输入 ============ -->
+    <section class="step">
+      <div class="step-head">
+        <span class="num">1</span>
+        <h2>输入</h2>
+        <div class="seg" id="kindSeg">
+          <button data-kind="sequence" class="on">图像序列</button>
+          <button data-kind="video">实测视频</button>
         </div>
+        <span class="spacer"></span>
+        <span class="step-hint" id="inputHint"></span>
+      </div>
+
+      <div id="seqPane" class="grid-2">
+        <label class="field">
+          <span>序列目录（含 frames.npy）</span>
+          <select id="seqSelect"></select>
+        </label>
+        <label class="field">
+          <span>或粘贴绝对路径（回车加载）</span>
+          <input type="text" id="seqPath" placeholder="E:\workspace\weiboguangzi\runs\...\sequence" />
+        </label>
+      </div>
+
+      <div id="videoPane" class="grid-2 hidden">
         <div class="field">
-          <label for="dispMode">灰度映射</label>
-          <select id="dispMode"></select>
+          <span>上传视频（仅落盘一次）</span>
+          <div class="file-box"><input type="file" id="videoFile" accept=".mp4,.mov,.avi,.mkv" /></div>
         </div>
-        <div class="field">
-          <label for="dispCmap">伪彩色 LUT</label>
-          <select id="dispCmap"></select>
+        <label class="field">
+          <span>或本地视频路径</span>
+          <div class="row">
+            <input type="text" id="videoPath" placeholder="D:\data\radar.mp4" style="flex:1;" />
+            <button class="btn btn-sm" id="btnVideoLoad">读取首帧</button>
+          </div>
+        </label>
+      </div>
+
+      <div id="cropSection" class="hidden" style="margin-top:14px;">
+        <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+          <span class="step-hint">在首帧上<strong>按住左键拖拽</strong>框选识别区域 · 首帧 <strong class="mono" id="dimLabel"></strong></span>
+          <div class="row">
+            <label class="switch-row" style="padding:0; gap:8px;"><span>启用裁剪</span><input type="checkbox" id="useCrop" /></label>
+            <button class="btn btn-sm" id="btnResetCrop">整幅</button>
+          </div>
         </div>
-        <div class="field">
-          <label for="dispDiff">时序差分参考</label>
-          <select id="dispDiff">
-            <option value="median">短期历史中值</option>
-            <option value="previous">前一帧</option>
-          </select>
+        <div class="crop-stage"><canvas id="cropCanvas"></canvas></div>
+        <div class="grid-4" style="margin-top:10px;">
+          <label class="field"><span>X</span><input type="number" id="cropX" min="0" value="0" /></label>
+          <label class="field"><span>Y</span><input type="number" id="cropY" min="0" value="0" /></label>
+          <label class="field"><span>宽度</span><input type="number" id="cropW" min="2" value="100" /></label>
+          <label class="field"><span>高度</span><input type="number" id="cropH" min="2" value="100" /></label>
         </div>
-        <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--outline);">
-          <label class="switch-row">
-            <span class="switch-label">轻度 3×3 去斑平滑</span>
-            <input type="checkbox" id="dispDenoise" />
-          </label>
-          <label class="switch-row">
-            <span class="switch-label"><span class="dot" style="background:#1e8e3e;"></span>绿色真值轮廓</span>
-            <input type="checkbox" id="dispTruth" checked />
-          </label>
-          <label class="switch-row">
-            <span class="switch-label"><span class="dot" style="background:#d93025;"></span>红色预测轮廓</span>
-            <input type="checkbox" id="dispPred" checked />
-          </label>
-          <label class="switch-row">
-            <span class="switch-label">像素锐化缩放</span>
-            <input type="checkbox" id="dispPixelated" checked />
-          </label>
+      </div>
+    </section>
+
+    <!-- ============ 2 模型 ============ -->
+    <section class="step">
+      <div class="step-head">
+        <span class="num">2</span>
+        <h2>模型</h2>
+        <span class="step-hint">勾选多个即可同屏对比</span>
+        <span class="spacer"></span>
+        <span class="badge" id="runBadge">待运行</span>
+      </div>
+
+      <div class="chips" id="methodChips">
+        <button class="chip on" data-method="threshold"><b>局部暗度阈值</b><span>传统 · 无需训练</span></button>
+        <button class="chip" data-method="difference"><b>时序背景差分</b><span>传统 · 抵消静态背景</span></button>
+        <button class="chip on" data-method="learned"><b>U-Net 时序</b><span>学习模型 · 需 PyTorch</span></button>
+      </div>
+
+      <label class="field" id="modelField" style="margin-top:12px;">
+        <span>模型部署 JSON</span>
+        <input type="text" id="modelPath" placeholder="留空使用默认 U-Net 权重" />
+      </label>
+
+      <details class="adv">
+        <summary>高级参数</summary>
+        <div class="grid-4">
+          <label class="field"><span>阈值 --threshold</span><input type="number" id="advThreshold" step="0.01" placeholder="自动" /></label>
+          <label class="field"><span>最小面积 --min-area</span><input type="number" id="advMinArea" value="4" min="1" /></label>
+          <label class="field"><span>关联门限 --gate-px</span><input type="number" id="advGate" value="12" step="0.5" /></label>
+          <label class="field"><span>匹配 IoU --match-iou</span><input type="number" id="advIou" value="0.5" step="0.05" /></label>
+        </div>
+      </details>
+
+      <div class="run-row">
+        <button class="btn btn-primary" id="btnRun">运行检测</button>
+        <span class="step-hint">结果写入 runs/gui/，不覆盖已有存档</span>
+      </div>
+      <pre id="log" class="terminal hidden"></pre>
+    </section>
+
+    <!-- ============ 3 结果 ============ -->
+    <section class="step">
+      <div class="step-head">
+        <span class="num">3</span>
+        <h2>结果</h2>
+        <div class="seg" id="viewSeg">
+          <button data-view="compare" class="on">对比</button>
+          <button data-view="quad">四宫格</button>
+        </div>
+        <span class="spacer"></span>
+        <span class="badge" id="centroidBadge">—</span>
+        <span class="badge mono" id="cacheBadge">缓存 0</span>
+        <div class="pop-wrap">
+          <button class="btn btn-sm" id="btnDisplay">显示</button>
+          <div class="popover hidden" id="displayPop">
+            <div class="field"><span>灰度映射</span><select id="dispMode"></select></div>
+            <div class="field"><span>伪彩色</span><select id="dispCmap"></select></div>
+            <div class="field"><span>时序差分参考</span>
+              <select id="dispDiff">
+                <option value="median">短期历史中值</option>
+                <option value="previous">前一帧</option>
+              </select>
+            </div>
+            <label class="switch-row"><span>轻度去斑平滑</span><input type="checkbox" id="dispDenoise" /></label>
+            <label class="switch-row"><span><span class="dot" style="background:#1e8e3e"></span>真值轮廓</span><input type="checkbox" id="dispTruth" checked /></label>
+            <label class="switch-row"><span><span class="dot" style="background:#d93025"></span>预测轮廓</span><input type="checkbox" id="dispPred" checked /></label>
+            <label class="switch-row"><span>像素锐化缩放</span><input type="checkbox" id="dispPixelated" checked /></label>
+          </div>
         </div>
       </div>
 
-      <div class="card card-compact">
-        <div class="section-head" style="margin-bottom:10px;">
-          <h2 class="section-title">实验目录</h2>
-          <span class="badge" id="runsStatusBadge">检测中</span>
+      <div id="emptyState" class="empty">选择输入后会自动载入已有结果；也可以点「运行检测」现场生成。</div>
+
+      <div id="compareGrid" class="compare-grid hidden"></div>
+
+      <div id="quadWrap" class="hidden">
+        <div class="quad-grid pixelated" id="quadGrid">
+          <div class="tile">
+            <div class="tile-head"><span>1 · 增强 SAR 原图</span><em>ENHANCED</em></div>
+            <div class="tile-img"><img id="quadImg0" alt="" /></div>
+          </div>
+          <div class="tile">
+            <div class="tile-head"><span>2 · 时序差分</span><em id="quadTag1">TEMP-DIFF</em></div>
+            <div class="tile-img"><img id="quadImg1" alt="" /></div>
+          </div>
+          <div class="tile">
+            <div class="tile-head"><span>3 · 检测与轨迹</span><em>TRACKING</em></div>
+            <div class="tile-img"><img id="quadImg2" alt="" /></div>
+          </div>
+          <div class="tile">
+            <div class="tile-head"><span>4 · 质心 4× 放大</span><em>ROI ×4</em></div>
+            <div class="tile-img"><img id="quadImg3" alt="" /></div>
+          </div>
         </div>
-        <div class="field">
-          <input type="text" id="runsRootInput" placeholder="runs 目录路径" />
+        <div class="row" style="margin-top:10px;">
+          <select id="quadSource" class="hidden" style="max-width:260px;"></select>
+          <button class="btn btn-sm" id="btnGif">导出 GIF</button>
+          <button class="btn btn-sm" id="btnMp4">导出 MP4</button>
+          <span class="step-hint" id="exportStatus"></span>
         </div>
-        <button class="btn btn-tonal btn-sm" id="btnReloadRuns" style="width:100%;">重新扫描目录</button>
-        <div id="repoRootHint" style="font-size:11.5px; color:var(--text-muted); margin-top:10px; word-break:break-all;"></div>
       </div>
 
-      <div class="card card-compact" style="font-size:12px; color:var(--text-muted); line-height:1.7;">
-        <div><span class="dot" style="background:#12b5cb; margin-right:6px;"></span>轨迹实测 (measured)</div>
-        <div><span class="dot" style="background:#f9ab00; margin-right:6px;"></span>轨迹插补 (imputed)</div>
-        <div style="margin-top:6px;">快捷键：<span class="mono" style="color:var(--text);">Space</span> 播放 · <span class="mono" style="color:var(--text);">← →</span> 逐帧</div>
+      <div id="videoResult" class="hidden">
+        <video id="videoOverlay" controls playsinline></video>
+        <div class="row" style="margin-top:10px;" id="videoDownloads"></div>
+        <div class="table-wrap" id="videoCsvWrap" style="margin-top:12px;"></div>
       </div>
-    </aside>
 
-    <!-- Main Workspace -->
-    <main class="stack">
-      <!-- ==================== TAB 1 ==================== -->
-      <section id="tab1" class="tab-view stack">
-        <!-- Control Bar Card -->
-        <div class="card">
-          <div class="row" style="justify-content:space-between; margin-bottom:14px;">
-            <div class="pill-group">
-              <button class="pill-btn active" data-t1mode="modeA">秒播已有结果</button>
-              <button class="pill-btn" data-t1mode="modeB">现场实时运行</button>
-            </div>
-            <button class="btn btn-tonal btn-sm" id="btnBootstrapDemo">一键生成快速演示</button>
-          </div>
+      <div class="transport" id="transport">
+        <button class="play-btn" id="btnPlay">▶ 播放</button>
+        <button class="icon-btn" id="btnPrev" title="上一帧 (←)">◀</button>
+        <button class="icon-btn" id="btnNext" title="下一帧 (→)">▶</button>
+        <input type="range" id="slider" class="scrubber" min="0" max="0" value="0" />
+        <span class="mono" id="frameCounter" style="font-size:12.5px; color:var(--text-secondary); min-width:64px; text-align:right;">0 / 0</span>
+        <select id="fps">
+          <option value="4">4 FPS</option>
+          <option value="8" selected>8 FPS</option>
+          <option value="12">12 FPS</option>
+          <option value="16">16 FPS</option>
+        </select>
+      </div>
 
-          <!-- Mode A -->
-          <div id="t1ModeAPanel">
-            <div class="grid-2">
-              <div class="field" style="margin:0;">
-                <label>选择序列目录 (frames.npy)</label>
-                <select id="t1SeqSelect"></select>
-              </div>
-              <div class="field" style="margin:0;">
-                <label>或手动指定序列路径（回车加载）</label>
-                <input type="text" id="t1SeqManual" placeholder="留空则使用左侧扫描结果" />
-              </div>
-            </div>
+      <div id="metricWrap" class="hidden"><table class="metrics" id="metricTable"></table></div>
+    </section>
 
-            <details class="drawer" id="t1DirDrawer">
-              <summary>
-                <span>结果目录映射（检测 / 跟踪 / 评估）<span id="t1LinkBadge" class="badge" style="margin-left:8px;"></span></span>
-              </summary>
-              <div class="grid-3">
-                <div class="field">
-                  <label>检测目录 (predictions.npy)</label>
-                  <select id="t1DetectSelect"></select>
-                  <input type="text" id="t1DetectManual" placeholder="手动覆盖路径" style="margin-top:6px;" />
-                </div>
-                <div class="field">
-                  <label>跟踪目录 (tracks.csv)</label>
-                  <select id="t1TrackSelect"></select>
-                  <input type="text" id="t1TrackManual" placeholder="手动覆盖路径" style="margin-top:6px;" />
-                </div>
-                <div class="field">
-                  <label>评估目录 (metrics.json)</label>
-                  <select id="t1EvalSelect"></select>
-                  <input type="text" id="t1EvalManual" placeholder="手动覆盖路径" style="margin-top:6px;" />
-                </div>
-              </div>
-            </details>
-          </div>
-
-          <!-- Mode B -->
-          <div id="t1ModeBPanel" class="hidden">
-            <div class="row" style="margin-bottom:14px;">
-              <div class="pill-group">
-                <button class="pill-btn active" data-btype="demo">快速图像域演示（推荐现场）</button>
-                <button class="pill-btn" data-btype="sar">单通道 SAR 回波全链路</button>
-              </div>
-              <span class="section-sub">现场产物写入 runs/gui/，不覆盖已有存档</span>
-            </div>
-
-            <div id="bDemoForm" class="grid-3" style="align-items:end;">
-              <div class="field" style="margin:0;">
-                <label>配置 JSON</label>
-                <input type="text" id="bDemoConfig" />
-              </div>
-              <div class="field" style="margin:0;">
-                <label>帧数：<strong class="mono" id="bDemoFramesVal">16</strong></label>
-                <input type="range" id="bDemoFrames" min="8" max="24" value="16" class="scrubber" style="width:100%; margin:10px 0;" />
-              </div>
-              <div>
-                <button class="btn btn-primary" id="btnRunDemo">运行快速演示</button>
-              </div>
-            </div>
-
-            <div id="bSarForm" class="grid-4 hidden" style="align-items:end;">
-              <div class="field" style="margin:0;">
-                <label>信号带宽</label>
-                <select id="bSarBw">
-                  <option value="300000000">300 MHz</option>
-                  <option value="450000000" selected>450 MHz</option>
-                  <option value="600000000">600 MHz</option>
-                </select>
-              </div>
-              <div class="field" style="margin:0;">
-                <label>检测方法</label>
-                <select id="bSarMethod">
-                  <option value="threshold">传统 · 局部暗度阈值</option>
-                  <option value="difference">传统 · 时序背景差分</option>
-                  <option value="learned">学习模型 · 冻结 U-Net</option>
-                </select>
-              </div>
-              <div class="field" style="margin:0;" id="bSarModelWrap">
-                <label>模型部署 JSON</label>
-                <input type="text" id="bSarModel" />
-              </div>
-              <div>
-                <button class="btn btn-primary" id="btnRunSar">运行 SAR 全链路</button>
-              </div>
-            </div>
-
-            <div id="t1LiveLogWrap" class="hidden" style="margin-top:14px;">
-              <div class="section-head" style="margin-bottom:8px;">
-                <span class="section-sub">实时运行日志</span>
-                <span id="t1JobStatus" class="badge">准备中</span>
-              </div>
-              <div id="t1LiveLog" class="terminal"></div>
-            </div>
-          </div>
+    <!-- ============ 次要信息 ============ -->
+    <details class="drawer" id="tracksDrawer">
+      <summary>逐帧轨迹与表观速度</summary>
+      <div class="grid-2">
+        <div>
+          <div class="step-hint" style="margin-bottom:6px;">质心像素坐标 (x_px / y_px)</div>
+          <canvas id="coordChart" class="chart" width="620" height="190"></canvas>
         </div>
-
-        <div id="t1Notice" class="notice hidden" style="margin-bottom:0;"></div>
-
-        <!-- Hero Four-Panel Viewer -->
-        <div id="t1BrowserWrap" class="card">
-          <div class="section-head">
-            <div style="min-width:0;">
-              <h2 class="section-title">四宫格同步帧浏览器</h2>
-              <div id="t1ActiveSeqLabel" class="mono section-sub" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:62ch;"></div>
-            </div>
-            <div class="row">
-              <span class="badge mono" id="t1CentroidBadge">质心：—</span>
-              <span class="badge mono" id="t1CacheBadge">缓存 0/0</span>
-            </div>
-          </div>
-
-          <div class="quad-grid pixelated" id="t1QuadGrid">
-            <div class="quad-tile">
-              <div class="quad-meta"><span>1 · 增强 SAR 原图</span><span class="quad-chip">ENHANCED</span></div>
-              <div class="quad-viewport"><img id="quadImg0" alt="view1" /></div>
-            </div>
-            <div class="quad-tile">
-              <div class="quad-meta"><span>2 · 时序差分（静态抵消）</span><span class="quad-chip" id="quadTag1">TEMP-DIFF</span></div>
-              <div class="quad-viewport"><img id="quadImg1" alt="view2" /></div>
-            </div>
-            <div class="quad-tile">
-              <div class="quad-meta"><span>3 · 检测与轨迹追踪</span><span class="quad-chip">TRACKING</span></div>
-              <div class="quad-viewport"><img id="quadImg2" alt="view3" /></div>
-            </div>
-            <div class="quad-tile">
-              <div class="quad-meta"><span>4 · 阴影质心 4× 放大</span><span class="quad-chip">ROI ×4</span></div>
-              <div class="quad-viewport"><img id="quadImg3" alt="view4" /></div>
-            </div>
-          </div>
-
-          <!-- Pill Transport Bar -->
-          <div class="transport">
-            <button class="btn-play-circle" id="t1PlayBtn">▶ 播放</button>
-            <button class="btn-icon" id="t1PrevBtn" title="上一帧 (←)">◀</button>
-            <button class="btn-icon" id="t1NextBtn" title="下一帧 (→)">▶</button>
-            <input type="range" id="t1Slider" class="scrubber" min="0" max="0" value="0" />
-            <span class="mono" id="t1FrameCounter" style="font-size:13px; color:var(--text-secondary); min-width:64px; text-align:right;">0 / 0</span>
-            <select id="t1FpsSelect">
-              <option value="4">4 FPS</option>
-              <option value="8" selected>8 FPS</option>
-              <option value="12">12 FPS</option>
-              <option value="16">16 FPS</option>
-            </select>
-            <button class="btn btn-sm" id="t1ExportGif">导出 GIF</button>
-            <button class="btn btn-sm" id="t1ExportMp4">导出 MP4</button>
-          </div>
-          <div id="t1ExportStatus" style="margin-top:10px; font-size:12.5px;"></div>
+        <div>
+          <div class="step-hint" style="margin-bottom:6px;">表观速度 (px/s)</div>
+          <canvas id="speedChart" class="chart" width="620" height="190"></canvas>
         </div>
+      </div>
+      <div class="table-wrap" id="tracksTable" style="margin-top:12px;"></div>
+    </details>
 
-        <!-- Dynamic KPI Strip -->
-        <div id="t1KpiPanel" class="card">
-          <div class="section-head">
-            <h2 class="section-title">检测与跟踪动态指标</h2>
-            <span id="t1MetricsMeta" class="section-sub mono"></span>
-          </div>
-          <div id="t1DetCards" class="kpi-grid" style="margin-bottom:10px;"></div>
-          <div id="t1TrackCards" class="kpi-grid"></div>
-        </div>
+    <details class="drawer" id="archiveDrawer">
+      <summary>归档实验指标（deliverables/）</summary>
+      <div class="row" style="margin-bottom:12px;">
+        <select id="archiveSelect" style="max-width:360px;"></select>
+      </div>
+      <canvas id="archiveChart" class="chart" width="960" height="230" style="margin-bottom:12px;"></canvas>
+      <div class="table-wrap" id="archiveTable"></div>
+    </details>
+  </main>
 
-        <!-- Track Charts & Table -->
-        <div id="t1TracksPanel" class="card hidden">
-          <div class="section-head">
-            <h2 class="section-title">逐帧轨迹与表观速度</h2>
-            <span id="t1TracksPath" class="section-sub mono"></span>
-          </div>
-          <div class="grid-2">
-            <div>
-              <div class="section-sub" style="margin-bottom:6px;">质心像素坐标 (x_px / y_px)</div>
-              <canvas id="t1CoordChart" class="chart-canvas" width="600" height="200"></canvas>
-            </div>
-            <div>
-              <div class="section-sub" style="margin-bottom:6px;">表观速度 (px/s)</div>
-              <canvas id="t1SpeedChart" class="chart-canvas" width="600" height="200"></canvas>
-            </div>
-          </div>
-          <details class="drawer">
-            <summary>查看 tracks.csv 原始逐帧明细</summary>
-            <div class="table-wrap" id="t1TracksTableWrap"></div>
-          </details>
-        </div>
-      </section>
-
-      <!-- ==================== TAB 2 ==================== -->
-      <section id="tab2" class="tab-view stack hidden">
-        <div class="card">
-          <div class="row" style="justify-content:space-between; align-items:flex-end; margin-bottom:14px;">
-            <div class="field" style="flex:1; min-width:260px; margin:0;">
-              <label>同源序列目录 (frames.npy)</label>
-              <select id="t2SeqSelect"></select>
-            </div>
-            <button class="btn btn-primary" id="t2CompareRunBtn">一键跑：传统基线 vs 学习模型</button>
-          </div>
-
-          <div id="t2LogWrap" class="hidden" style="margin-bottom:14px;">
-            <div class="section-head" style="margin-bottom:6px;">
-              <span class="section-sub">对照任务日志</span>
-              <span id="t2JobStatus" class="badge">运行中</span>
-            </div>
-            <div id="t2LiveLog" class="terminal"></div>
-          </div>
-
-          <div class="grid-2" style="margin-bottom:14px;">
-            <div class="field" style="margin:0;">
-              <label>左侧检测结果</label>
-              <select id="t2LeftSelect"></select>
-            </div>
-            <div class="field" style="margin:0;">
-              <label>右侧检测结果</label>
-              <select id="t2RightSelect"></select>
-            </div>
-          </div>
-
-          <div class="quad-grid pixelated" id="t2Grid">
-            <div class="quad-tile">
-              <div class="quad-meta"><span>左侧预测</span><span class="mono section-sub" id="t2LeftMeta">—</span></div>
-              <div class="quad-viewport"><img id="t2LeftImg" alt="left" /></div>
-            </div>
-            <div class="quad-tile">
-              <div class="quad-meta"><span>右侧预测</span><span class="mono section-sub" id="t2RightMeta">—</span></div>
-              <div class="quad-viewport"><img id="t2RightImg" alt="right" /></div>
-            </div>
-          </div>
-
-          <div class="transport">
-            <button class="btn-play-circle" id="t2PlayBtn">▶ 播放</button>
-            <input type="range" id="t2Slider" class="scrubber" min="0" max="0" value="0" />
-            <span class="mono" id="t2FrameCounter" style="font-size:13px; color:var(--text-secondary);">0 / 0</span>
-            <span class="section-sub">红=预测 · 绿=真值（虚警数以 metrics.json 为准）</span>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-head">
-            <h2 class="section-title">归档实验指标表</h2>
-            <select id="t2ArchiveSelect" style="max-width:340px;"></select>
-          </div>
-          <canvas id="t2ArchiveChart" class="chart-canvas" width="900" height="230" style="margin-bottom:14px;"></canvas>
-          <div class="table-wrap" id="t2ArchiveTableWrap"></div>
-        </div>
-      </section>
-
-      <!-- ==================== TAB 3 ==================== -->
-      <section id="tab3" class="tab-view stack hidden">
-        <div class="notice" style="margin-bottom:0;">
-          <strong>客观说明：</strong>随附七帧模型为<strong>严格因果、无未来帧泄露</strong>的探索性研究权重，仅用于研究演示。训练、校准与开发复核均取自 SNL Eubank Gate 开发段，两套正式验收段仍处于封存状态；开发复核成绩不代表正式验收结果。
-        </div>
-
-        <div class="grid-2" style="align-items:start;">
-          <div class="card">
-            <div class="section-head"><h2 class="section-title">运行环境与模型信息</h2></div>
-            <div id="t3EnvBadges" class="row" style="margin-bottom:10px;"></div>
-            <div id="t3EnvHints" class="section-sub" style="line-height:1.7;"></div>
-            <details class="drawer">
-              <summary>查看七帧模型开发复核成绩 (stacked-center.json)</summary>
-              <div id="t3ModelCards" class="kpi-grid" style="margin-bottom:10px;"></div>
-              <div id="t3ModelMeta" class="section-sub"></div>
-            </details>
-          </div>
-
-          <div class="card">
-            <div class="section-head">
-              <h2 class="section-title">预渲染归档预览</h2>
-              <select id="t3PreviewSelect" style="max-width:260px;"></select>
-            </div>
-            <div id="t3PreviewWrap">
-              <video id="t3PreviewVideo" controls playsinline></video>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-head">
-            <h2 class="section-title">自定义实测雷达视频推理</h2>
-            <span class="section-sub mono">detect-video</span>
-          </div>
-
-          <div class="grid-2" style="margin-bottom:14px; align-items:end;">
-            <div class="field" style="margin:0;">
-              <label>上传视频（仅落盘一次）</label>
-              <div class="file-box">
-                <input type="file" id="t3FileInput" accept=".mp4,.mov,.avi,.mkv" />
-              </div>
-            </div>
-            <div class="field" style="margin:0;">
-              <label>或填写本地视频绝对路径</label>
-              <div class="row">
-                <input type="text" id="t3LocalPath" placeholder="例如 D:\data\radar.mp4" style="flex:1;" />
-                <button class="btn btn-tonal" id="t3LoadLocalBtn">加载首帧</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Interactive Cropper -->
-          <div id="t3CropSection" class="hidden" style="margin-bottom:16px;">
-            <div class="row" style="justify-content:space-between; margin-bottom:10px;">
-              <span class="section-sub">
-                在首帧画布上<strong>按住鼠标拖拽</strong>即可框选 <span class="mono">--crop</span> 区域 · 尺寸：<strong id="t3DimLabel" class="mono"></strong>
-              </span>
-              <div class="row">
-                <label class="switch-row" style="padding:0; gap:8px;">
-                  <span>启用裁剪</span>
-                  <input type="checkbox" id="t3UseCrop" />
-                </label>
-                <button class="btn btn-sm" id="t3ResetCropBtn">重置整幅</button>
-              </div>
-            </div>
-            <div class="crop-stage" style="margin-bottom:12px;">
-              <canvas id="t3CropCanvas"></canvas>
-            </div>
-            <div class="grid-4">
-              <div class="field"><label>X</label><input type="number" id="t3CropX" min="0" value="0" /></div>
-              <div class="field"><label>Y</label><input type="number" id="t3CropY" min="0" value="0" /></div>
-              <div class="field"><label>WIDTH</label><input type="number" id="t3CropW" min="2" value="100" /></div>
-              <div class="field"><label>HEIGHT</label><input type="number" id="t3CropH" min="2" value="100" /></div>
-            </div>
-          </div>
-
-          <div class="grid-4" style="align-items:end;">
-            <div class="field" style="margin:0;">
-              <label>起始帧 (--start-frame)</label>
-              <input type="number" id="t3StartFrame" min="0" value="0" />
-            </div>
-            <div class="field" style="margin:0;">
-              <label>推理帧数 (--max-frames)</label>
-              <input type="number" id="t3MaxFrames" min="1" max="2000" value="24" />
-            </div>
-            <div class="field" style="margin:0;">
-              <label>模型部署 JSON（留空用默认权重）</label>
-              <input type="text" id="t3ModelPath" placeholder="留空使用默认七帧权重" />
-            </div>
-            <div>
-              <button class="btn btn-primary" id="t3RunBtn" style="width:100%;">开始视频推理</button>
-            </div>
-          </div>
-
-          <div id="t3LogWrap" class="hidden" style="margin-top:14px;">
-            <div class="section-head" style="margin-bottom:8px;">
-              <span class="section-sub">推理实时日志</span>
-              <span id="t3JobStatus" class="badge">运行中</span>
-            </div>
-            <div id="t3LiveLog" class="terminal"></div>
-          </div>
-
-          <div id="t3ResultWrap" class="hidden" style="margin-top:18px; padding-top:18px; border-top:1px solid var(--outline);">
-            <div class="section-head">
-              <h3 class="section-title">推理结果预览</h3>
-              <div class="row" id="t3Downloads"></div>
-            </div>
-            <div class="grid-2">
-              <div><video id="t3ResultVideo" controls playsinline></video></div>
-              <div>
-                <div class="section-sub" style="margin-bottom:8px;">predictions.csv 预览</div>
-                <div class="table-wrap" id="t3CsvTableWrap" style="max-height:240px;"></div>
-                <details class="drawer">
-                  <summary>查看 video.json</summary>
-                  <pre id="t3VideoJson" class="terminal" style="margin:0;"></pre>
-                </details>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

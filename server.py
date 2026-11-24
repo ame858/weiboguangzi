@@ -16,6 +16,7 @@ import io
 import json
 import math
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -382,6 +383,39 @@ def _start_job(commands: list[list[str]], result_builder) -> str:
     return job_id
 
 
+def _start_grouped_job(groups: list[tuple[str, list[list[str]]]], result_builder) -> str:
+    """Run several independent command chains; one failing does not kill the rest."""
+    job_id = uuid.uuid4().hex[:12]
+    state: dict[str, Any] = {"logs": [], "done": False, "ok": False, "result": None}
+    with _JOBS_LOCK:
+        if len(_JOBS) > _MAX_JOBS:
+            for stale in [k for k, v in _JOBS.items() if v["done"]][: len(_JOBS) - _MAX_JOBS]:
+                _JOBS.pop(stale, None)
+        _JOBS[job_id] = state
+
+    def worker():
+        def emit(line: Any):
+            state["logs"].append(str(line))
+
+        outcomes: dict[str, bool] = {}
+        for name, commands in groups:
+            emit(f"=== {name} ===")
+            outcomes[name] = cmd.run_commands(commands, scan.REPO_ROOT, emit)
+            if not outcomes[name]:
+                emit(f"[{name}] 失败，继续其余方法")
+        state["ok"] = any(outcomes.values())
+        if state["ok"]:
+            try:
+                state["result"] = _clean(result_builder(outcomes))
+            except Exception as exc:  # pragma: no cover - defensive
+                state["logs"].append(f"[后处理异常] {exc}")
+                state["ok"] = False
+        state["done"] = True
+
+    threading.Thread(target=worker, daemon=True).start()
+    return job_id
+
+
 # ---------------------------------------------------------------------------
 # Request schemas
 # ---------------------------------------------------------------------------
@@ -415,12 +449,30 @@ class ExportRequest(BrowserMetaRequest):
     settings: DisplaySettings = DisplaySettings()
 
 
+class CompareSide(BaseModel):
+    detect_dir: str
+    evaluate_dir: str | None = None
+    label: str | None = None
+
+
 class CompareFrameRequest(BaseModel):
     sequence_dir: str
-    left_dir: str
-    right_dir: str
+    left_dir: str | None = None
+    right_dir: str | None = None
+    sides: list[CompareSide] | None = None
     index: int = 0
     settings: DisplaySettings = DisplaySettings()
+
+
+class DetectJobRequest(BaseModel):
+    sequence_dir: str
+    methods: list[str] = ["threshold"]
+    model: str | None = None
+    threshold: float | None = None
+    min_area: int = 4
+    gate_px: float = 12.0
+    max_gap: int = 2
+    match_iou: float = 0.5
 
 
 class DemoJobRequest(BaseModel):
@@ -684,6 +736,29 @@ def api_browser_export(req: ExportRequest):
     }))
 
 
+def _side_summary(evaluate_dir: Path | None) -> dict[str, Any] | None:
+    """Four headline numbers plus diagnostics, straight from metrics.json."""
+    metrics = scan.load_metrics(evaluate_dir)
+    if not metrics:
+        return None
+    detection = metrics.get("detection") or {}
+    tracking = metrics.get("tracking") or {}
+    return {
+        "precision": detection.get("precision"),
+        "recall": detection.get("recall"),
+        "target_f1": detection.get("target_f1"),
+        "iou": detection.get("iou"),
+        "fp_per_frame": detection.get("false_positive_per_frame"),
+        "matched": detection.get("matched"),
+        "missed": detection.get("missed"),
+        "false_positive": detection.get("false_positive"),
+        "continuity": tracking.get("continuity"),
+        "location_rmse_px": tracking.get("location_rmse_px"),
+        "velocity_error_mps": tracking.get("velocity_error_mps"),
+        "match_iou": metrics.get("match_iou"),
+    }
+
+
 @app.post("/api/compare/frame")
 def api_compare_frame(req: CompareFrameRequest):
     seq_path = _opt_path(req.sequence_dir)
@@ -693,6 +768,14 @@ def api_compare_frame(req: CompareFrameRequest):
     if seq is None:
         raise HTTPException(status_code=400, detail="无法加载序列")
 
+    if req.sides:
+        targets = [(side.detect_dir, side.evaluate_dir, side.label) for side in req.sides]
+    else:
+        targets = [(req.left_dir, None, None), (req.right_dir, None, None)]
+    targets = [item for item in targets if item[0]]
+    if not targets:
+        raise HTTPException(status_code=400, detail="未提供检测结果目录")
+
     frames = seq["frames"]
     count = int(len(frames))
     idx = max(0, min(count - 1, int(req.index)))
@@ -701,8 +784,8 @@ def api_compare_frame(req: CompareFrameRequest):
     base = viz.enhance(frames[idx], s["mode"], s["cmap"], s["denoise"])
 
     out_sides = []
-    for side_dir in (req.left_dir, req.right_dir):
-        pred = _cached_predictions(_opt_path(side_dir), frames.shape)
+    for detect_dir, evaluate_dir, label in targets:
+        pred = _cached_predictions(_opt_path(detect_dir), frames.shape)
         view = base.copy()
         if pred is not None:
             view = viz.overlay_mask(view, pred[idx], viz.PREDICTION_COLOR)
@@ -711,10 +794,12 @@ def api_compare_frame(req: CompareFrameRequest):
         components = viz.count_components(pred[idx]) if pred is not None else None
         overlap = int(np.count_nonzero(pred[idx] & truth[idx])) if pred is not None and truth is not None else None
         out_sides.append({
-            "path": side_dir,
+            "label": label or Path(detect_dir).name,
+            "path": detect_dir,
             "image": _encode_png(view),
             "components": scan.format_metric(components),
             "overlap": scan.format_metric(overlap),
+            "summary": _side_summary(_opt_path(evaluate_dir)),
         })
 
     return JSONResponse(_clean({"index": idx, "count": count, "sides": out_sides}))
@@ -801,6 +886,69 @@ def api_job_compare(req: CompareJobRequest):
         lambda: {"predictions": [str(p) for p in plan["predictions"]]},
     )
     return JSONResponse({"job_id": job_id})
+
+
+METHOD_LABELS = {
+    "threshold": "局部暗度阈值",
+    "difference": "时序背景差分",
+    "learned": "U-Net 时序",
+}
+
+
+def _method_chain(sequence: Path, method: str, root: Path, req: DetectJobRequest) -> list[list[str]]:
+    """detect -> track -> evaluate for one method on an existing sequence."""
+    detect_dir, track_dir, evaluate_dir = root / method / "detect", root / method / "track", root / method / "evaluate"
+    detect = [sys.executable, "-m", "videosar", "detect",
+              "--input", str(sequence), "--method", method,
+              "--min-area", str(int(req.min_area)), "--output-dir", str(detect_dir)]
+    if req.threshold is not None:
+        detect += ["--threshold", f"{float(req.threshold):g}"]
+    if method == "learned":
+        detect += ["--model", str(_opt_path(req.model) or cmd.UNET_MODEL)]
+    track = [sys.executable, "-m", "videosar", "track",
+             "--input", str(sequence), "--predictions", str(detect_dir),
+             "--gate-px", f"{float(req.gate_px):g}", "--max-gap", str(int(req.max_gap)),
+             "--output-dir", str(track_dir)]
+    evaluate = [sys.executable, "-m", "videosar", "evaluate",
+                "--input", str(sequence), "--predictions", str(detect_dir), "--tracks", str(track_dir),
+                "--match-iou", f"{float(req.match_iou):g}", "--output-dir", str(evaluate_dir)]
+    return [detect, track, evaluate]
+
+
+@app.post("/api/jobs/detect")
+def api_job_detect(req: DetectJobRequest):
+    """Run one or more detection methods on the selected sequence."""
+    seq_path = _opt_path(req.sequence_dir)
+    if seq_path is None or not seq_path.is_dir():
+        raise HTTPException(status_code=400, detail="序列目录无效")
+    methods = [m for m in req.methods if m in METHOD_LABELS]
+    if not methods:
+        raise HTTPException(status_code=400, detail="请至少选择一种检测方法")
+    if "learned" in methods:
+        env = cmd.environment_report()
+        if not env["torch"]:
+            raise HTTPException(status_code=400, detail="学习模型需要 PyTorch，请查看环境自检")
+
+    output = cmd.gui_run_dir("detect")
+    groups = [(m, _method_chain(seq_path, m, output, req)) for m in methods]
+
+    def collect(outcomes: dict[str, bool]):
+        results = []
+        for method in methods:
+            folder = output / method
+            results.append({
+                "method": method,
+                "label": METHOD_LABELS[method],
+                "ok": bool(outcomes.get(method)),
+                "detect": folder / "detect",
+                "track": folder / "track",
+                "evaluate": folder / "evaluate",
+            })
+        return {"sequence": seq_path, "results": results}
+
+    job_id = _start_grouped_job(groups, collect)
+    return JSONResponse({"job_id": job_id, "methods": methods})
+
 
 
 def _extract_preview(video_path: Path, workspace: Path) -> dict[str, Any]:
