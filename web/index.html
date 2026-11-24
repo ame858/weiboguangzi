@@ -701,6 +701,81 @@
       display: none;
     }
 
+    /* 空槽位弹出菜单：点击「+ 添加对比」后在列内浮出，列出已有结果与占用槽位 */
+    .col.col-empty {
+      overflow: visible; /* 允许弹出菜单溢出列框（普通结果列仍保持 hidden） */
+    }
+    .col.col-empty .col-head,
+    .col.col-empty .col-head select {
+      pointer-events: none; /* 透传点击给 .slot-empty，由 JS 接管菜单；键盘仍可聚焦 select */
+    }
+    .col.col-empty.menu-open {
+      background: var(--pressed);
+      border-color: var(--cta);
+      z-index: 6;
+    }
+    .col.col-empty.menu-open .slot-empty { color: var(--cta); }
+    .slot-menu {
+      position: absolute;
+      top: 36px;
+      right: -4px;
+      min-width: max(100%, 240px);
+      max-height: 280px;
+      overflow-y: auto;
+      z-index: 20;
+      background: var(--surface-white);
+      border: 1px solid var(--outline);
+      border-radius: var(--r-sm);
+      box-shadow: var(--shadow-2);
+      padding: 6px;
+      animation: menu-in 140ms ease-out;
+    }
+    @keyframes menu-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .slot-menu-title {
+      padding: 4px 8px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--on-3);
+      letter-spacing: 0.3px;
+    }
+    .slot-menu-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: none;
+      border-radius: var(--r-xs);
+      background: transparent;
+      color: var(--on);
+      font-family: inherit;
+      font-size: 12.5px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .slot-menu-item:hover { background: var(--field-hover); }
+    .slot-menu-item .tag {
+      flex: 0 0 auto;
+      padding: 1px 7px;
+      border-radius: var(--r-full);
+      background: var(--pressed);
+      color: var(--on-pressed);
+      font-size: 10.5px;
+      white-space: nowrap;
+    }
+    .slot-menu-hint {
+      padding: 6px 8px 4px;
+      margin-top: 2px;
+      border-top: 1px solid var(--outline);
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--on-3);
+    }
+
     .pixelated img { image-rendering: pixelated; }
 
     /* ---------- 四宫格 ---------- */
@@ -1105,6 +1180,19 @@
       background: var(--pressed);
       color: var(--on-pressed);
     }
+    .file-box.has-file {
+      border-color: var(--cta);
+      background: var(--pressed);
+    }
+    #videoFileName {
+      display: block;
+      margin-top: 5px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--on-2);
+      word-break: break-all;
+    }
+    #videoFileName:empty { display: none; }
     .crop-stage {
       background: var(--stage);
       border-radius: var(--r-sm);
@@ -1126,13 +1214,13 @@
 
     .btn:focus-visible, .icon-btn:focus-visible, .play-btn:focus-visible, .method:focus-visible,
     .seg button:focus-visible, .switch-row input:focus-visible, .strip button:focus-visible,
-    .slot-empty:focus-visible, .link-btn:focus-visible {
+    .slot-empty:focus-visible, .slot-menu-item:focus-visible, .link-btn:focus-visible {
       outline: 2px solid var(--cta);
       outline-offset: 2px;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .step, .popover, .sheet, .sheet-card, .dots i { animation: none !important; }
+      .step, .popover, .sheet, .sheet-card, .dots i, .slot-menu { animation: none !important; }
       .btn, .play-btn, .method, .icon-btn, .col { transition: none !important; }
     }
 
@@ -1206,7 +1294,10 @@
             </div>
           </div>
           <div id="videoPane" class="hidden" style="display:flex; flex-direction:column; gap:7px;">
-            <div class="file-box"><input type="file" id="videoFile" accept=".mp4,.mov,.avi,.mkv" /></div>
+            <div class="file-box" id="videoFileBox">
+              <input type="file" id="videoFile" accept=".mp4,.mov,.avi,.mkv" />
+              <span id="videoFileName"></span>
+            </div>
             <input type="text" id="videoPath" placeholder="或本地视频路径" />
             <button class="btn btn-sm" id="btnVideoLoad">读取首帧</button>
           </div>

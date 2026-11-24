@@ -114,6 +114,22 @@ function setBadge(el, text, level = "") {
   el.className = `badge ${level}`.trim();
 }
 
+function closeSlotMenus() {
+  document.querySelectorAll("#columns .slot-menu").forEach((m) => m.remove());
+  document.querySelectorAll("#columns .col-empty.menu-open").forEach((c) => c.classList.remove("menu-open"));
+}
+
+function selectSlotValue(slot, value) {
+  if (value >= 0) {
+    // Picking a result that already occupies another column swaps the two,
+    // so a comparison never shows the same model twice.
+    const other = state.slots.indexOf(value);
+    if (other >= 0 && other !== slot) state.slots[other] = state.slots[slot];
+  }
+  state.slots[slot] = value;
+  render();
+}
+
 /* ------------------------------------------------------------ context */
 function updateCtx() {
   const parts = [];
@@ -296,6 +312,45 @@ function slotOptions(current) {
   return `<option value="-1"${empty}>（空位）</option>${list}`;
 }
 
+function openSlotMenu(colEl, slot) {
+  const wasOpen = colEl.classList.contains("menu-open");
+  closeSlotMenus();
+  if (wasOpen) return;
+
+  colEl.classList.add("menu-open");
+  const menu = document.createElement("div");
+  menu.className = "slot-menu";
+  menu.setAttribute("role", "menu");
+
+  const title = document.createElement("div");
+  title.className = "slot-menu-title";
+  title.textContent = "选择对比结果";
+  menu.appendChild(title);
+
+  state.results.forEach((r, idx) => {
+    const usedIn = state.slots.indexOf(idx);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "slot-menu-item";
+    btn.innerHTML = `<span>${esc(labelOf(r))}</span>${usedIn >= 0 ? `<span class="tag">槽位 ${usedIn + 1}</span>` : ""}`;
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeSlotMenus();
+      selectSlotValue(slot, idx);
+    });
+    menu.appendChild(btn);
+  });
+
+  if (state.results.length <= 1) {
+    const hint = document.createElement("div");
+    hint.className = "slot-menu-hint";
+    hint.textContent = "在左侧勾选更多模型并点击「运行检测」，即可展开多列并排对比。";
+    menu.appendChild(hint);
+  }
+
+  colEl.appendChild(menu);
+}
+
 async function renderColumns() {
   const filled = state.slots
     .map((idx, slot) => ({ slot, idx }))
@@ -343,9 +398,9 @@ async function renderColumns() {
       </div>`;
     if (!side) {
       cells.push(`
-        <div class="col col-empty" title="点击选择已有结果，或在左侧勾选更多模型后运行">
+        <div class="col col-empty" data-slot="${slot}" title="点击添加对比结果">
           ${head}
-          <button class="slot-empty" data-slot="${slot}" type="button" tabindex="-1">
+          <button class="slot-empty" data-slot="${slot}" type="button">
             <span class="slot-plus" aria-hidden="true">+</span>
             <span class="slot-label">添加对比</span>
             <span class="slot-sub">选择已有结果，或在左侧勾选模型运行</span>
@@ -371,25 +426,16 @@ async function renderColumns() {
   for (const sel of document.querySelectorAll("#columns .slotPick")) {
     sel.addEventListener("change", (ev) => {
       ev.stopPropagation();
-      const slot = Number(ev.target.dataset.slot);
-      const value = Number(ev.target.value);
-      if (value >= 0) {
-        // Picking a result that already occupies another column swaps the two,
-        // so a comparison never shows the same model twice.
-        const other = state.slots.indexOf(value);
-        if (other >= 0 && other !== slot) state.slots[other] = state.slots[slot];
-      }
-      state.slots[slot] = value;
-      render();
+      selectSlotValue(Number(ev.target.dataset.slot), Number(ev.target.value));
     });
     sel.addEventListener("click", (ev) => ev.stopPropagation());
   }
   for (const box of document.querySelectorAll("#columns .slot-empty")) {
-    box.addEventListener("click", () => {
+    box.addEventListener("click", (ev) => {
+      ev.stopPropagation();
       const slot = Number(box.dataset.slot);
-      const sel = document.querySelector(`#columns .slotPick[data-slot="${slot}"]`);
-      if (sel?.showPicker) sel.showPicker();
-      else sel?.focus();
+      const colEl = box.closest(".col-empty");
+      if (colEl) openSlotMenu(colEl, slot);
     });
   }
 
@@ -922,6 +968,10 @@ function bind() {
   $("videoFile").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const nameEl = $("videoFileName");
+    const boxEl = $("videoFileBox");
+    if (nameEl) nameEl.textContent = file.name;
+    if (boxEl) boxEl.classList.add("has-file");
     const fd = new FormData();
     fd.append("file", file);
     setBadge($("runBadge"), "解码首帧", "warn");
@@ -1038,6 +1088,7 @@ function bind() {
   });
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".pop-wrap")) $("displayPop").classList.add("hidden");
+    if (!ev.target.closest(".col-empty")) closeSlotMenus();
   });
   ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred"].forEach((id) => {
     $(id).addEventListener("change", () => {
@@ -1065,10 +1116,13 @@ function bind() {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("metricSheet").classList.contains("hidden")) {
-      e.preventDefault();
-      closeSheet();
-      return;
+    if (e.key === "Escape") {
+      closeSlotMenus();
+      if (!$("metricSheet").classList.contains("hidden")) {
+        e.preventDefault();
+        closeSheet();
+        return;
+      }
     }
     // 弹层是模态的：开着时不允许空格/方向键改背后的帧
     if (!$("metricSheet").classList.contains("hidden")) return;
