@@ -1,13 +1,14 @@
-/* Ka-band Video SAR shadow workbench — single-page flow: 输入 → 模型 → 结果.
- * No framework, no CDN; works fully offline. */
+/* Ka-band video SAR shadow comparison workbench.
+ * Layout: fixed rail (input / model / run) + canvas (columns / pills / filmstrip).
+ * No framework, no CDN, fully offline. */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 
 const METHODS = {
-  threshold: { label: "局部暗度阈值", hint: "传统 · 无需训练" },
-  difference: { label: "时序背景差分", hint: "传统 · 抵消静态背景" },
-  learned: { label: "U-Net 时序", hint: "学习模型 · 需 PyTorch" },
+  threshold: "局部暗度阈值",
+  difference: "时序背景差分",
+  learned: "U-Net 时序",
 };
 
 const METRIC_ROWS = [
@@ -36,6 +37,8 @@ const state = {
   dragStart: null,
   methods: new Set(["threshold", "learned"]),
   results: [],
+  slots: [],
+  quadSlot: 0,
   meta: null,
   count: 0,
   index: 0,
@@ -43,11 +46,13 @@ const state = {
   playing: false,
   timer: null,
   quadCache: new Map(),
-  active: 0,
+  strip: null,
+  stripKey: "",
+  sides: [],
   videoResult: null,
 };
 
-/* ---------------------------------------------------------------- helpers */
+/* ------------------------------------------------------------ utilities */
 async function apiJson(url, options = {}) {
   const resp = await fetch(url, options);
   const data = await resp.json().catch(() => ({}));
@@ -55,31 +60,17 @@ async function apiJson(url, options = {}) {
   return data;
 }
 
-function escapeHtml(val) {
-  return String(val).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
+const esc = (v) =>
+  String(v).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-function setOptions(selectEl, items, valueKey = "path", labelKey = "label") {
-  selectEl.innerHTML = "";
-  for (const item of items) {
-    const opt = document.createElement("option");
-    const isObj = typeof item === "object";
-    opt.value = isObj ? item[valueKey] : item;
-    opt.textContent = isObj ? item[labelKey] : item;
-    selectEl.appendChild(opt);
-  }
-}
+const fmt = (v, digits = 3) =>
+  v === null || v === undefined || !Number.isFinite(v)
+    ? "—"
+    : digits === 0 ? String(Math.round(v)) : v.toFixed(digits);
 
-function renderTable(container, fields, rows) {
-  if (!fields || !fields.length || !rows || !rows.length) {
-    container.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:12.5px;">暂无数据</div>`;
-    return;
-  }
-  const head = `<thead><tr>${fields.map((f) => `<th>${escapeHtml(f)}</th>`).join("")}</tr></thead>`;
-  const body = rows
-    .map((r) => `<tr>${fields.map((f) => `<td class="mono">${escapeHtml(r[f] ?? "")}</td>`).join("")}</tr>`)
-    .join("");
-  container.innerHTML = `<table class="plain">${head}<tbody>${body}</tbody></table>`;
+function labelOf(result) {
+  if (!result) return "—";
+  return result.method && METHODS[result.method] ? METHODS[result.method] : result.label || "已有结果";
 }
 
 function getSettings() {
@@ -98,45 +89,33 @@ function settingsKey() {
   return `${s.mode}|${s.cmap}|${s.denoise}|${s.diff_ref}|${s.show_truth}|${s.show_pred}`;
 }
 
-function fmt(value, digits = 3) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return digits === 0 ? String(Math.round(value)) : value.toFixed(digits);
-}
-
-function labelOf(result) {
-  if (result.method && METHODS[result.method]) return METHODS[result.method].label;
-  return result.label || "已有关联结果";
-}
-
 function setBadge(el, text, level = "") {
   el.textContent = text;
   el.className = `badge ${level}`.trim();
 }
 
-/* ---------------------------------------------------------------- context */
+/* ------------------------------------------------------------ context */
 function updateCtx() {
-  const chip = $("ctxChip");
   const parts = [];
   if (state.kind === "video") {
-    if (state.video) parts.push(`<b>${escapeHtml(state.video.split(/[\\/]/).pop())}</b>`);
+    if (state.video) parts.push(`<b>${esc(state.video.split(/[\\/]/).pop())}</b>`);
   } else if (state.seq) {
     const tail = state.seq.split(/[\\/]/).filter(Boolean).slice(-2).join("/");
-    parts.push(`<b>${escapeHtml(tail)}</b>`);
+    parts.push(`<b>${esc(tail)}</b>`);
   }
   if (state.count) parts.push(`${state.count} 帧`);
-  if (state.results.length) {
-    parts.push(state.results.map((r) => escapeHtml(labelOf(r))).join(" · "));
-  }
+  const shown = state.slots.map((i) => labelOf(state.results[i])).filter((x) => x !== "—");
+  if (shown.length) parts.push(shown.map(esc).join(" · "));
   if (!parts.length) {
     $("ctxText").textContent = "未选择输入";
-    chip.classList.remove("live");
+    $("ctxChip").classList.remove("live");
     return;
   }
-  $("ctxText").innerHTML = parts.join('<span class="sep">|</span>');
-  chip.classList.toggle("live", state.results.length > 0 || (state.kind === "video" && Boolean(state.video)));
+  $("ctxText").innerHTML = parts.join('<span class="sep"> | </span>');
+  $("ctxChip").classList.toggle("live", shown.length > 0);
 }
 
-/* ---------------------------------------------------------------- startup */
+/* ------------------------------------------------------------ boot */
 async function boot() {
   const data = await apiJson("/api/bootstrap");
   state.boot = data;
@@ -155,33 +134,42 @@ async function boot() {
     $("dispCmap").appendChild(opt);
   }
   $("modelPath").value = data.defaults.unet_model || "";
-
-  setOptions($("archiveSelect"), data.archive_tables);
-  if (data.archive_tables.length) loadArchive(data.archive_tables[0].path);
-
-  const seqs = await apiJson(`/api/sequences?runs_root=${encodeURIComponent(state.runsRoot)}`);
-  setOptions($("seqSelect"), seqs.sequences);
-  if (seqs.sequences.length) {
-    const preferred = seqs.sequences.find((s) => s.label.includes("结题演示·优先")) || seqs.sequences[0];
-    $("seqSelect").value = preferred.path;
-    await loadSequence(preferred.path);
-  } else {
-    $("inputHint").textContent = "runs/ 下未找到 frames.npy";
-    updateCtx();
-  }
+  await reloadSequences();
 }
 
-/* ---------------------------------------------------------------- input */
+async function reloadSequences(refresh = false) {
+  const suffix = refresh ? "&refresh=1" : "";
+  const seqs = await apiJson(`/api/sequences?runs_root=${encodeURIComponent(state.runsRoot)}${suffix}`);
+  const sel = $("seqSelect");
+  sel.innerHTML = "";
+  for (const item of seqs.sequences) {
+    const opt = document.createElement("option");
+    opt.value = item.path;
+    opt.textContent = item.label;
+    opt.title = item.path;
+    sel.appendChild(opt);
+  }
+  if (!seqs.sequences.length) {
+    $("stageEmpty").classList.remove("hidden");
+    $("stageEmpty").textContent = "runs/ 下没有找到 frames.npy，请检查目录或在左侧粘贴路径。";
+    return;
+  }
+  const preferred = seqs.sequences.find((s) => s.label.includes("结题演示·优先")) || seqs.sequences[0];
+  sel.value = preferred.path;
+  await loadSequence(preferred.path);
+}
+
+/* ------------------------------------------------------------ input */
 async function loadSequence(path) {
   if (!path) return;
   state.kind = "sequence";
   state.seq = path;
   state.index = 0;
   state.quadCache.clear();
+  state.strip = null;
+  state.stripKey = "";
   state.videoResult = null;
-  $("videoResult").classList.add("hidden");
   stopPlayback();
-  $("inputHint").textContent = "正在载入…";
 
   try {
     const res = await apiJson(
@@ -194,187 +182,234 @@ async function loadSequence(path) {
     state.results = auto.predictions
       ? [{
           method: "existing",
-          // Show which run this came from instead of a vague placeholder.
-          label: match ? match.label.split("/").slice(-2).join("/") : "已有关联结果",
+          label: "已有结果",
+          source: match ? match.label : "",
           detect: auto.predictions,
           track: auto.tracks || null,
           evaluate: auto.metrics || null,
         }]
       : [];
+    state.slots = state.results.length ? [0] : [];
+    state.quadSlot = 0;
     await refreshMeta();
-    $("inputHint").textContent = state.results.length
-      ? "已载入该序列的既有检测结果"
-      : "该序列暂无检测结果，选择模型后运行即可";
-    await renderAll();
+    await render();
   } catch (err) {
-    $("inputHint").textContent = err.message;
+    $("stageEmpty").classList.remove("hidden");
+    $("stageEmpty").textContent = `载入失败：${err.message}`;
   }
 }
 
 async function refreshMeta() {
-  const first = state.results[0];
-  const payload = {
-    sequence_dir: state.seq,
-    detect_dir: first?.detect || null,
-    track_dir: first?.track || null,
-    evaluate_dir: first?.evaluate || null,
-  };
+  const first = state.results[state.slots[0]] || state.results[0];
   try {
     state.meta = await apiJson("/api/browser/meta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        sequence_dir: state.seq,
+        detect_dir: first?.detect || null,
+        track_dir: first?.track || null,
+        evaluate_dir: first?.evaluate || null,
+      }),
     });
     state.count = state.meta.count || 0;
   } catch {
     state.meta = null;
     state.count = 0;
   }
-  $("slider").max = Math.max(0, state.count - 1);
   updateCtx();
 }
 
-/* ---------------------------------------------------------------- render */
-async function renderAll() {
-  updateTransport();
+/* ------------------------------------------------------------ render */
+async function render() {
   if (state.kind === "video") {
-    renderVideoResult();
+    renderVideo();
     return;
   }
   if (!state.results.length) {
-    $("emptyState").classList.remove("hidden");
-    $("emptyState").textContent = "该序列还没有检测结果。选择模型后点「运行检测」，或换一个已有结果的序列。";
-    ["compareGrid", "quadWrap", "metricWrap", "transport"].forEach((id) => $(id).classList.add("hidden"));
+    ["columns", "quad", "quadBar", "pills", "strip", "videoStage", "colHint"].forEach((id) =>
+      $(id).classList.add("hidden")
+    );
+    $("stageEmpty").classList.remove("hidden");
+    $("stageEmpty").textContent = "该序列还没有检测结果。在左侧勾选模型并点「运行检测」。";
+    updateCtx();
     return;
   }
-  $("emptyState").classList.add("hidden");
-  $("transport").classList.remove("hidden");
+  $("stageEmpty").classList.add("hidden");
+  $("videoStage").classList.add("hidden");
+
   if (state.view === "quad") {
-    $("compareGrid").classList.add("hidden");
-    $("quadWrap").classList.remove("hidden");
+    $("columns").classList.add("hidden");
+    $("pills").classList.add("hidden");
+    $("quad").classList.remove("hidden");
+    $("quadBar").classList.remove("hidden");
     await renderQuad();
   } else {
-    $("quadWrap").classList.add("hidden");
-    $("compareGrid").classList.remove("hidden");
-    await renderCompare();
+    $("quad").classList.add("hidden");
+    $("quadBar").classList.add("hidden");
+    $("columns").classList.remove("hidden");
+    $("pills").classList.remove("hidden");
+    await renderColumns();
   }
-  renderTracks();
+  await renderStrip();
+  updateCtx();
 }
 
-function updateTransport() {
-  $("slider").value = state.index;
-  $("frameCounter").textContent = state.count ? `${state.index} / ${state.count - 1}` : "0 / 0";
+function frameLabel() {
+  $("frameLabel").textContent = state.count
+    ? `帧 ${state.index + 1} / ${state.count}`
+    : "帧 0 / 0";
 }
 
-async function renderCompare() {
-  const sides = state.results.map((r) => ({
-    detect_dir: r.detect,
-    evaluate_dir: r.evaluate || null,
-    label: labelOf(r),
-  }));
+async function renderColumns() {
+  const sides = state.slots
+    .map((idx) => state.results[idx])
+    .filter(Boolean)
+    .map((r) => ({ detect_dir: r.detect, evaluate_dir: r.evaluate || null, label: labelOf(r) }));
+
   let data;
   try {
     data = await apiJson("/api/compare/frame", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sequence_dir: state.seq,
-        sides,
-        index: state.index,
-        settings: getSettings(),
-      }),
+      body: JSON.stringify({ sequence_dir: state.seq, sides, index: state.index, settings: getSettings() }),
     });
   } catch (err) {
-    $("compareGrid").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    $("stageEmpty").classList.remove("hidden");
+    $("stageEmpty").textContent = err.message;
     return;
   }
+  state.sides = data.sides;
   state.count = data.count;
   state.index = data.index;
-  $("slider").max = Math.max(0, data.count - 1);
+  frameLabel();
 
-  const pixelated = $("dispPixelated").checked;
-  $("compareGrid").classList.toggle("pixelated", pixelated);
-  $("compareGrid").classList.toggle("single", data.sides.length === 1);
-  $("compareGrid").innerHTML = data.sides
-    .map((side) => {
+  const canAdd = state.results.length > state.slots.length && state.slots.length < 3;
+  $("columns").style.setProperty("--cols", String(state.slots.length + (canAdd ? 1 : 0)));
+  $("columns").classList.toggle("pixelated", $("dispPixelated").checked);
+
+  const cards = data.sides
+    .map((side, i) => {
       const s = side.summary || {};
+      const options = state.results
+        .map((r, idx) => `<option value="${idx}"${state.slots[i] === idx ? " selected" : ""}>${esc(labelOf(r))}</option>`)
+        .join("");
       return `
-      <figure class="col">
-        <div class="col-head"><b>${escapeHtml(side.label)}</b><span class="mono">${data.index + 1}/${data.count}</span></div>
-        <div class="col-img"><img src="${side.image}" alt="${escapeHtml(side.label)}" /></div>
-        <div class="col-foot">
-          <span>IoU <span class="score">${fmt(s.iou)}</span></span>
-          <span>虚警/帧 <span class="score">${fmt(s.fp_per_frame, 2)}</span></span>
-          <span>重叠 <span class="score">${escapeHtml(side.overlap)}</span> px</span>
+      <div class="col">
+        <div class="col-head">
+          <select class="slotPick" data-slot="${i}">${options}</select>
+          <span class="f1">F1 ${fmt(s.target_f1)}</span>
         </div>
-      </figure>`;
+        <div class="col-img"><img src="${side.image}" alt="${esc(side.label)}" /></div>
+        <div class="col-foot">
+          <span>IoU <span class="hot">${fmt(s.iou)}</span></span>
+          <span>虚警/帧 <span class="hot">${fmt(s.fp_per_frame, 2)}</span></span>
+          <span>重叠 <span class="hot">${esc(side.overlap)}</span> px</span>
+        </div>
+      </div>`;
     })
     .join("");
 
+  $("columns").innerHTML = cards + (canAdd ? `<button class="add-slot" id="btnAddSlot">+ 添加模型</button>` : "");
+  if (canAdd) {
+    $("btnAddSlot").addEventListener("click", () => {
+      const next = state.results.findIndex((_, i) => !state.slots.includes(i));
+      if (next >= 0) {
+        state.slots.push(next);
+        render();
+      }
+    });
+  }
+  for (const sel of document.querySelectorAll(".slotPick")) {
+    sel.addEventListener("change", (ev) => {
+      const slot = Number(ev.target.dataset.slot);
+      state.slots[slot] = Number(ev.target.value);
+      render();
+    });
+  }
+  const hint = $("colHint");
+  if (state.slots.length === 1) {
+    hint.classList.remove("hidden");
+    hint.textContent = "当前只有 1 个结果。在左侧多勾一个模型再运行，就能并排对比。";
+  } else {
+    hint.classList.add("hidden");
+  }
+  renderPills(data.sides);
   renderMetricTable(data.sides);
-  $("centroidBadge").textContent = data.sides.length > 1
-    ? `${data.sides.length} 个模型同屏`
-    : `IoU ${fmt(data.sides[0]?.summary?.iou)}`;
-  $("cacheBadge").classList.add("hidden");
-  updateTransport();
+}
+
+function pillCard(label, value, delta, digits = 3) {
+  let tail = "";
+  if (delta !== null && delta !== undefined) {
+    if (Math.abs(delta) < 1e-9) {
+      tail = `<em style="color:var(--text-3);">±0</em>`;
+    } else {
+      const cls = delta > 0 ? "up" : "down";
+      const arrow = delta > 0 ? "↑" : "↓";
+      tail = `<em class="${cls}">${arrow}${Math.abs(delta).toFixed(digits)}</em>`;
+    }
+  }
+  return `<div class="pillcard"><span>${label}</span><b>${value}${tail}</b></div>`;
+}
+
+function renderPills(sides) {
+  const first = sides[0]?.summary || {};
+  const last = sides[sides.length - 1]?.summary || {};
+  const diff = (key) => {
+    if (sides.length < 2) return null;
+    const a = first[key];
+    const b = last[key];
+    return Number.isFinite(a) && Number.isFinite(b) ? b - a : null;
+  };
+  const host = $("pills");
+  if (!sides.length || !sides[0].summary) {
+    host.classList.add("hidden");
+    return;
+  }
+  host.classList.remove("hidden");
+  host.innerHTML = [
+    pillCard("目标级 F1", fmt(last.target_f1), diff("target_f1"), 3),
+    pillCard("区域 IoU", fmt(last.iou), diff("iou"), 3),
+    pillCard("每帧虚警", fmt(last.fp_per_frame, 2), diff("fp_per_frame"), 2),
+    pillCard("匹配帧", fmt(last.matched, 0), diff("matched"), 0),
+  ].join("");
 }
 
 function renderMetricTable(sides) {
-  if (!sides.some((side) => side.summary)) {
-    $("metricWrap").classList.add("hidden");
+  if (!sides.some((s) => s.summary)) {
+    $("metricTable").innerHTML = `<tr><td style="color:var(--text-3);">暂无指标</td></tr>`;
     return;
   }
-  $("metricWrap").classList.remove("hidden");
   const base = sides[0]?.summary || {};
   const head = `<thead><tr><th>指标</th>${sides
-    .map((side) => `<th>${escapeHtml(side.label)}</th>`)
+    .map((s) => `<th>${esc(s.label)}</th>`)
     .join("")}</tr></thead>`;
-
   const body = METRIC_ROWS.map((row) => {
     const cells = sides.map((side, i) => {
-      const value = side.summary ? side.summary[row.key] : null;
+      const v = side.summary ? side.summary[row.key] : null;
       let delta = "";
       if (i > 0 && side.summary) {
         const b = base[row.key];
-        const v = side.summary[row.key];
         if (Number.isFinite(b) && Number.isFinite(v)) {
-          const diff = v - b;
-          if (Math.abs(diff) > 1e-9) {
-            const good = row.better === "down" ? diff < 0 : diff > 0;
-            delta = `<span class="delta ${good ? "up" : "down"}">${good ? "↑" : "↓"}${Math.abs(diff).toFixed(row.digits)}</span>`;
+          const d = v - b;
+          if (Math.abs(d) > 1e-9) {
+            const good = row.better === "down" ? d < 0 : d > 0;
+            delta = `<span class="delta ${good ? "up" : "down"}">${good ? "↑" : "↓"}${Math.abs(d).toFixed(row.digits)}</span>`;
           } else {
             delta = `<span class="delta flat">±0</span>`;
           }
         }
       }
-      return `<td class="val">${fmt(value, row.digits)}${delta}</td>`;
+      return `<td class="val">${fmt(v, row.digits)}${delta}</td>`;
     });
     return `<tr><td>${row.label}</td>${cells.join("")}</tr>`;
   }).join("");
-
   $("metricTable").innerHTML = `${head}<tbody>${body}</tbody>`;
 }
 
-function syncQuadSource() {
-  const sel = $("quadSource");
-  sel.innerHTML = "";
-  if (state.results.length < 2) {
-    sel.classList.add("hidden");
-    return;
-  }
-  state.results.forEach((r, i) => {
-    const opt = document.createElement("option");
-    opt.value = String(i);
-    opt.textContent = labelOf(r);
-    sel.appendChild(opt);
-  });
-  sel.value = String(state.active);
-  sel.classList.remove("hidden");
-}
-
 async function renderQuad() {
-  syncQuadSource();
-  const result = state.results[state.active] || state.results[0];
+  const idx = state.slots[state.quadSlot] ?? state.slots[0] ?? 0;
+  const result = state.results[idx];
   if (!result) return;
   const key = `${result.detect}|${state.index}|${settingsKey()}`;
   let data = state.quadCache.get(key);
@@ -393,215 +428,105 @@ async function renderQuad() {
         }),
       });
     } catch (err) {
-      $("quadWrap").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      $("stageEmpty").classList.remove("hidden");
+      $("stageEmpty").textContent = err.message;
       return;
     }
     state.quadCache.set(key, data);
     if (state.quadCache.size > 60) state.quadCache.clear();
   }
-  for (let i = 0; i < 4; i++) $(`quadImg${i}`).src = data.panels[i];
   state.count = data.count;
   state.index = data.index;
-  $("slider").max = Math.max(0, data.count - 1);
-  $("centroidBadge").textContent = data.center
-    ? `质心 (${data.center[0].toFixed(1)}, ${data.center[1].toFixed(1)})`
-    : "本帧无阴影";
-  $("quadTag1").textContent = data.index === 0 ? "TEMP-DIFF · 首帧无历史" : "TEMP-DIFF";
-  $("cacheBadge").classList.remove("hidden");
-  $("cacheBadge").textContent = `缓存 ${state.quadCache.size}`;
-  $("quadGrid").classList.toggle("pixelated", $("dispPixelated").checked);
-  updateTransport();
+  frameLabel();
+
+  const panels = [
+    ["1 · 增强 SAR 原图", "ENHANCED"],
+    ["2 · 时序差分", data.index === 0 ? "首帧无历史" : "TEMP-DIFF"],
+    ["3 · 检测与轨迹", "TRACKING"],
+    ["4 · 质心 4× 放大", "ROI ×4"],
+  ];
+  $("quad").innerHTML = data.panels
+    .map((src, i) => `
+      <figure>
+        <figcaption><span>${panels[i][0]}</span><span>${panels[i][1]}</span></figcaption>
+        <div class="col-img"><img src="${src}" alt="" /></div>
+      </figure>`)
+    .join("");
+  $("quad").classList.toggle("pixelated", $("dispPixelated").checked);
+
+  const sel = $("quadSource");
+  sel.innerHTML = state.slots
+    .map((slotIdx, i) => `<option value="${i}"${i === state.quadSlot ? " selected" : ""}>${esc(labelOf(state.results[slotIdx]))}</option>`)
+    .join("");
+  sel.classList.toggle("hidden", state.slots.length < 2);
+  if (state.sides.length) renderPills(state.sides);
 }
 
-/* ---------------------------------------------------------------- tracks */
-function renderTracks() {
-  const rows = state.meta?.track_rows || [];
-  if (!rows.length) {
-    $("tracksDrawer").classList.add("hidden");
+async function renderStrip() {
+  if (state.kind === "video" || !state.results.length) {
+    $("strip").classList.add("hidden");
     return;
   }
-  $("tracksDrawer").classList.remove("hidden");
-  drawLineChart(
-    $("coordChart"),
-    [
-      { name: "x_px", color: "#1a73e8", values: rows.map((r) => r.x_px) },
-      { name: "y_px", color: "#f9ab00", values: rows.map((r) => r.y_px) },
-    ],
-    state.meta.speed_series.frames
-  );
-  drawLineChart(
-    $("speedChart"),
-    [{ name: "速度 (px/s)", color: "#1e8e3e", values: state.meta.speed_series.speeds }],
-    state.meta.speed_series.frames
-  );
-  renderTable($("tracksTable"), ["frame", "time_s", "x_px", "y_px", "source", "segment"], rows);
-}
-
-/* ---------------------------------------------------------------- charts */
-function prepare(canvas, fallbackW, fallbackH) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth || fallbackW;
-  const h = canvas.clientHeight || fallbackH;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-  return { ctx, w, h };
-}
-
-function drawLineChart(canvas, seriesList, xLabels) {
-  const { ctx, w, h } = prepare(canvas, 600, 190);
-  const pad = { l: 48, r: 16, t: 28, b: 26 };
-  const plotW = w - pad.l - pad.r;
-  const plotH = h - pad.t - pad.b;
-  const all = seriesList.flatMap((s) => s.values.filter((v) => Number.isFinite(v)));
-  if (!all.length) {
-    ctx.fillStyle = "#747775";
-    ctx.font = "13px sans-serif";
-    ctx.fillText("暂无轨迹数据", pad.l, pad.t + 32);
-    return;
-  }
-  let lo = Math.min(...all);
-  let hi = Math.max(...all);
-  if (hi === lo) { lo -= 1; hi += 1; }
-
-  ctx.strokeStyle = "#e3e8ef";
-  ctx.fillStyle = "#747775";
-  ctx.font = "11px monospace";
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.t + (plotH * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(pad.l, y);
-    ctx.lineTo(w - pad.r, y);
-    ctx.stroke();
-    ctx.fillText((hi - ((hi - lo) * i) / 4).toFixed(1), 6, y + 4);
-  }
-
-  const n = Math.max(1, xLabels.length - 1);
-  seriesList.forEach((s, idx) => {
-    ctx.strokeStyle = s.color;
-    ctx.lineWidth = 2.4;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    let started = false;
-    s.values.forEach((v, i) => {
-      if (!Number.isFinite(v)) { started = false; return; }
-      const x = pad.l + (plotW * i) / n;
-      const y = pad.t + plotH * (1 - (v - lo) / (hi - lo));
-      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
-    });
-    ctx.stroke();
-    ctx.fillStyle = s.color;
-    ctx.beginPath();
-    ctx.arc(pad.l + idx * 105 + 4, 12, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#444746";
-    ctx.font = "500 11.5px sans-serif";
-    ctx.fillText(s.name, pad.l + idx * 105 + 13, 16);
-  });
-
-  if (xLabels.length) {
-    ctx.fillStyle = "#747775";
-    ctx.font = "11px monospace";
-    const step = Math.max(1, Math.floor(xLabels.length / 6));
-    for (let i = 0; i < xLabels.length; i += step) {
-      ctx.fillText(String(xLabels[i]), pad.l + (plotW * i) / n - 4, h - 8);
+  const result = state.results[state.slots[0]];
+  const key = `${state.seq}|${result?.detect || ""}|${settingsKey()}`;
+  if (state.stripKey !== key || !state.strip) {
+    try {
+      state.strip = await apiJson("/api/browser/strip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sequence_dir: state.seq,
+          detect_dir: result?.detect || null,
+          settings: getSettings(),
+          width: 96,
+        }),
+      });
+      state.stripKey = key;
+    } catch {
+      $("strip").classList.add("hidden");
+      return;
     }
   }
-}
-
-function stripSharedPrefix(categories) {
-  if (categories.length < 3) return categories;
-  const counts = new Map();
-  for (const name of categories) {
-    const head = String(name).split("_")[0];
-    if (!head || head === name || head.length < 2 || head.length > 8) continue;
-    counts.set(head, (counts.get(head) || 0) + 1);
+  const host = $("strip");
+  host.classList.remove("hidden");
+  host.innerHTML = state.strip.thumbs
+    .map((src, i) => `<button data-frame="${i}" class="${i === state.index ? "on" : ""}" title="第 ${i + 1} 帧">
+        <img src="${src}" alt="" /><i>${i + 1}</i></button>`)
+    .join("");
+  for (const btn of host.querySelectorAll("button")) {
+    btn.addEventListener("click", () => gotoFrame(Number(btn.dataset.frame)));
   }
-  let best = null;
-  let bestCount = 0;
-  for (const [head, count] of counts) if (count > bestCount) { best = head; bestCount = count; }
-  if (!best || bestCount < Math.ceil(categories.length * 0.6)) return categories;
-  return categories.map((c) => (String(c).startsWith(best + "_") ? String(c).slice(best.length + 1) : String(c)));
+  markStrip();
 }
 
-function roundedBar(ctx, x, y, w, h, r) {
-  if (h <= 0 || w <= 0) return;
-  const radius = Math.min(r, w / 2, h);
-  ctx.beginPath();
-  ctx.moveTo(x, y + h);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-  ctx.lineTo(x + w, y + h);
-  ctx.closePath();
-  ctx.fill();
+function markStrip() {
+  const host = $("strip");
+  if (!host || host.classList.contains("hidden")) return;
+  host.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === state.index));
+  const active = host.querySelector("button.on");
+  if (active) active.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-function drawBarChart(canvas, chart) {
-  const { ctx, w, h } = prepare(canvas, 900, 230);
-  if (!chart || !chart.categories.length) {
-    ctx.fillStyle = "#747775";
-    ctx.font = "13px sans-serif";
-    ctx.fillText("该表无可绘制的指标列", 22, 42);
+function renderVideo() {
+  ["columns", "quad", "quadBar", "pills", "strip", "stageEmpty"].forEach((id) =>
+    $(id).classList.add("hidden")
+  );
+  $("videoStage").classList.remove("hidden");
+  const res = state.videoResult;
+  if (!res) {
+    $("videoOverlay").classList.add("hidden");
+    $("videoDownloads").innerHTML = `<span class="lbl">上传视频并点「运行检测」后，这里显示叠加结果。</span>`;
     return;
   }
-  const palette = ["#1a73e8", "#1e8e3e", "#f9ab00", "#d93025", "#9334e6", "#12b5cb"];
-  const pad = { l: 46, r: 18, t: 38, b: 36 };
-  const plotW = w - pad.l - pad.r;
-  const plotH = h - pad.t - pad.b;
-  const maxVal = Math.max(1, ...chart.series.flatMap((s) => s.values));
-
-  ctx.fillStyle = "#1f1f1f";
-  ctx.font = "600 12.5px sans-serif";
-  ctx.fillText(chart.title || "", pad.l, 20);
-
-  let lx = pad.l + 200;
-  ctx.font = "500 11.5px sans-serif";
-  chart.series.forEach((s, si) => {
-    ctx.fillStyle = palette[si % palette.length];
-    ctx.beginPath();
-    ctx.arc(lx + 4, 16, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#444746";
-    ctx.fillText(s.name, lx + 13, 20);
-    lx += Math.min(140, s.name.length * 7.5 + 34);
-  });
-
-  ctx.strokeStyle = "#e3e8ef";
-  ctx.fillStyle = "#747775";
-  ctx.font = "11px monospace";
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.t + (plotH * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(pad.l, y);
-    ctx.lineTo(w - pad.r, y);
-    ctx.stroke();
-    ctx.fillText((maxVal * (1 - i / 4)).toFixed(2), 6, y + 4);
-  }
-
-  const groupW = plotW / chart.categories.length;
-  const barW = Math.max(8, Math.min(28, (groupW * 0.7) / Math.max(1, chart.series.length)));
-  const labels = stripSharedPrefix(chart.categories);
-  chart.categories.forEach((cat, ci) => {
-    const gx = pad.l + ci * groupW + (groupW - barW * chart.series.length) / 2;
-    chart.series.forEach((s, si) => {
-      const v = s.values[ci] || 0;
-      const bh = (v / maxVal) * plotH;
-      ctx.fillStyle = palette[si % palette.length];
-      roundedBar(ctx, gx + si * barW + 1, pad.t + plotH - bh, Math.max(4, barW - 3), bh, 5);
-    });
-    ctx.fillStyle = "#444746";
-    ctx.font = "11.5px sans-serif";
-    const raw = labels[ci];
-    ctx.fillText(raw.length > 16 ? raw.slice(0, 15) + "…" : raw, pad.l + ci * groupW + 8, h - 12);
-  });
+  $("videoOverlay").classList.remove("hidden");
+  if (res.overlay_url) $("videoOverlay").src = `${res.overlay_url}&t=${Date.now()}`;
+  const links = [];
+  if (res.overlay_download) links.push(`<a class="btn btn-sm btn-primary" href="${res.overlay_download}">下载叠加视频</a>`);
+  if (res.csv_download) links.push(`<a class="btn btn-sm" href="${res.csv_download}">下载 predictions.csv</a>`);
+  $("videoDownloads").innerHTML = links.join("");
 }
 
-/* ---------------------------------------------------------------- playback */
+/* ------------------------------------------------------------ playback */
 function stopPlayback() {
   state.playing = false;
   if (state.timer) { clearTimeout(state.timer); state.timer = null; }
@@ -618,7 +543,8 @@ function togglePlayback() {
     const t0 = performance.now();
     state.index = (state.index + 1) % state.count;
     try {
-      await (state.view === "quad" ? renderQuad() : renderCompare());
+      await (state.view === "quad" ? renderQuad() : renderColumns());
+      markStrip();
     } catch { stopPlayback(); return; }
     const interval = 1000 / Number($("fps").value || 8);
     state.timer = setTimeout(step, Math.max(0, interval - (performance.now() - t0)));
@@ -628,12 +554,13 @@ function togglePlayback() {
 
 async function gotoFrame(index) {
   stopPlayback();
-  state.index = Math.max(0, Math.min(Math.max(0, state.count - 1), index));
-  await (state.view === "quad" ? renderQuad() : renderCompare());
-  updateTransport();
+  if (!state.count) return;
+  state.index = Math.max(0, Math.min(state.count - 1, index));
+  await (state.view === "quad" ? renderQuad() : renderColumns());
+  markStrip();
 }
 
-/* ---------------------------------------------------------------- run */
+/* ------------------------------------------------------------ run */
 function streamJob(jobId, onDone) {
   const log = $("log");
   log.classList.remove("hidden");
@@ -649,6 +576,7 @@ function streamJob(jobId, onDone) {
     es.close();
     const { ok, result } = JSON.parse(ev.data);
     setBadge($("runBadge"), ok ? "已完成" : "执行失败", ok ? "ok" : "err");
+    if (ok) setTimeout(() => $("log").classList.add("hidden"), 700);
     onDone(ok, result);
   });
   es.onerror = () => {
@@ -658,9 +586,9 @@ function streamJob(jobId, onDone) {
 }
 
 async function runDetection() {
+  if (state.kind === "video") return runVideoDetection();
   const methods = [...state.methods];
   if (!methods.length) { alert("请至少选择一个模型"); return; }
-  if (state.kind === "video") return runVideoDetection();
   if (!state.seq) { alert("请先选择输入序列"); return; }
 
   $("btnRun").disabled = true;
@@ -691,12 +619,13 @@ async function runDetection() {
         track: r.track,
         evaluate: r.evaluate,
       }));
+      state.slots = state.results.slice(0, 2).map((_, i) => i);
+      state.quadSlot = 0;
       state.index = 0;
       state.quadCache.clear();
-      state.active = 0;
+      state.stripKey = "";
       await refreshMeta();
-      await renderAll();
-      $("inputHint").textContent = `已生成 ${done.length} 个模型的结果`;
+      await render();
     });
   } catch (err) {
     $("btnRun").disabled = false;
@@ -729,7 +658,7 @@ async function runVideoDetection() {
       $("btnRun").disabled = false;
       if (!ok || !result) return;
       state.videoResult = result;
-      renderVideoResult();
+      renderVideo();
     });
   } catch (err) {
     $("btnRun").disabled = false;
@@ -739,36 +668,25 @@ async function runVideoDetection() {
   }
 }
 
-/* ---------------------------------------------------------------- video */
-function showVideoPane() {
-  state.kind = "video";
-  state.results = [];
-  stopPlayback();
-  $("seqPane").classList.add("hidden");
-  $("videoPane").classList.remove("hidden");
-  $("methodChips").classList.add("hidden");
-  $("modelField").classList.remove("hidden");
-  $("inputHint").textContent = "输入一段雷达视频，逐帧输出检测框与叠加视频";
-  $("emptyState").classList.remove("hidden");
-  $("emptyState").textContent = "上传视频后先确认首帧与识别区域，再点「运行检测」。";
-  ["compareGrid", "quadWrap", "metricWrap", "transport", "videoResult"].forEach((id) => $(id).classList.add("hidden"));
-  $("tracksDrawer").classList.add("hidden");
-  $("cacheBadge").classList.add("hidden");
-  state.count = 0;
-  updateTransport();
+/* ------------------------------------------------------------ video crop */
+function setKind(kind) {
+  state.kind = kind;
+  [...$("kindSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.kind === kind));
+  $("seqPane").classList.toggle("hidden", kind !== "sequence");
+  $("videoPane").classList.toggle("hidden", kind !== "video");
+  $("cropSection").classList.toggle("hidden", kind !== "video" || !state.videoInfo);
+  if (kind === "video") {
+    state.results = [];
+    state.slots = [];
+    state.count = 0;
+    state.videoResult = null;
+    stopPlayback();
+    frameLabel();
+    renderVideo();
+  } else if (state.seq) {
+    loadSequence(state.seq);
+  }
   updateCtx();
-}
-
-function showSequencePane() {
-  state.kind = "sequence";
-  $("seqPane").classList.remove("hidden");
-  $("videoPane").classList.add("hidden");
-  $("cropSection").classList.add("hidden");
-  $("methodChips").classList.remove("hidden");
-  $("modelField").classList.toggle("hidden", !state.methods.has("learned"));
-  $("videoResult").classList.add("hidden");
-  if (state.seq) loadSequence(state.seq);
-  else updateCtx();
 }
 
 function loadCropFrame(info) {
@@ -779,10 +697,7 @@ function loadCropFrame(info) {
   $("cropSection").classList.remove("hidden");
   syncCrop();
   const img = new Image();
-  img.onload = () => {
-    state.cropImg = img;
-    drawCrop();
-  };
+  img.onload = () => { state.cropImg = img; drawCrop(); };
   img.src = `${info.first_frame_url}&t=${Date.now()}`;
   updateCtx();
 }
@@ -803,13 +718,13 @@ function drawCrop() {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0);
   const { x, y, w, h } = state.crop;
-  ctx.fillStyle = "rgba(0,0,0,0.38)";
+  ctx.fillStyle = "rgba(0,0,0,.38)";
   ctx.fillRect(0, 0, canvas.width, y);
   ctx.fillRect(0, y + h, canvas.width, canvas.height - (y + h));
   ctx.fillRect(0, y, x, h);
   ctx.fillRect(x + w, y, canvas.width - (x + w), h);
   ctx.strokeStyle = "#ea4335";
-  ctx.lineWidth = Math.max(2, Math.round(canvas.width / 300));
+  ctx.lineWidth = Math.max(2, Math.round(canvas.width / 260));
   ctx.strokeRect(x, y, w, h);
 }
 
@@ -824,63 +739,31 @@ function canvasPoint(ev) {
   };
 }
 
-function renderVideoResult() {
-  const result = state.videoResult;
-  $("videoResult").classList.remove("hidden");
-  $("emptyState").classList.add("hidden");
-  ["compareGrid", "quadWrap", "metricWrap", "transport"].forEach((id) => $(id).classList.add("hidden"));
-  if (!result) {
-    $("videoOverlay").classList.add("hidden");
-    $("videoDownloads").innerHTML = "";
-    return;
-  }
-  $("videoOverlay").classList.remove("hidden");
-  if (result.overlay_url) $("videoOverlay").src = `${result.overlay_url}&t=${Date.now()}`;
-  const dl = [];
-  if (result.overlay_download) dl.push(`<a class="btn btn-sm btn-primary" href="${result.overlay_download}">下载叠加视频</a>`);
-  if (result.csv_download) dl.push(`<a class="btn btn-sm" href="${result.csv_download}">下载 predictions.csv</a>`);
-  $("videoDownloads").innerHTML = dl.join("");
-  renderTable($("videoCsvWrap"), result.csv_fields, result.csv_rows);
-}
-
-/* ---------------------------------------------------------------- archive */
-async function loadArchive(path) {
-  try {
-    const data = await apiJson(`/api/archive_table?path=${encodeURIComponent(path)}`);
-    drawBarChart($("archiveChart"), data.chart);
-    renderTable($("archiveTable"), data.fields, data.rows);
-  } catch (err) {
-    $("archiveTable").innerHTML = `<div style="padding:16px;color:var(--err);">${escapeHtml(err.message)}</div>`;
-  }
-}
-
-/* ---------------------------------------------------------------- events */
+/* ------------------------------------------------------------ events */
 function bind() {
   $("kindSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-kind]");
-    if (!btn) return;
-    [...$("kindSeg").children].forEach((b) => b.classList.toggle("on", b === btn));
-    if (btn.dataset.kind === "video") showVideoPane();
-    else showSequencePane();
+    if (btn) setKind(btn.dataset.kind);
   });
 
   $("seqSelect").addEventListener("change", (e) => loadSequence(e.target.value));
   $("seqPath").addEventListener("keydown", (e) => {
     if (e.key === "Enter") loadSequence(e.target.value.trim());
   });
+  $("btnReloadRuns").addEventListener("click", () => reloadSequences(true));
 
   $("videoFile").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
-    $("inputHint").textContent = "正在解码首帧…";
+    setBadge($("runBadge"), "解码首帧", "warn");
     try {
       const info = await apiJson("/api/video/upload", { method: "POST", body: fd });
       loadCropFrame(info);
-      $("inputHint").textContent = "首帧已就绪，确认识别区域后运行检测";
+      setBadge($("runBadge"), "待运行");
     } catch (err) {
-      $("inputHint").textContent = err.message;
+      setBadge($("runBadge"), err.message, "err");
     }
   });
 
@@ -894,9 +777,8 @@ function bind() {
         body: JSON.stringify({ video_path: path }),
       });
       loadCropFrame(info);
-      $("inputHint").textContent = "首帧已就绪，确认识别区域后运行检测";
     } catch (err) {
-      $("inputHint").textContent = err.message;
+      setBadge($("runBadge"), err.message, "err");
     }
   });
 
@@ -910,10 +792,9 @@ function bind() {
   window.addEventListener("mousemove", (ev) => {
     if (!state.dragging || !state.dragStart) return;
     const pt = canvasPoint(ev);
-    const x = Math.min(state.dragStart.x, pt.x);
-    const y = Math.min(state.dragStart.y, pt.y);
     state.crop = {
-      x, y,
+      x: Math.min(state.dragStart.x, pt.x),
+      y: Math.min(state.dragStart.y, pt.y),
       w: Math.max(2, Math.abs(pt.x - state.dragStart.x)),
       h: Math.max(2, Math.abs(pt.y - state.dragStart.y)),
     };
@@ -940,17 +821,17 @@ function bind() {
     drawCrop();
   });
 
-  $("methodChips").addEventListener("click", (ev) => {
-    const chip = ev.target.closest("button[data-method]");
-    if (!chip) return;
-    const method = chip.dataset.method;
+  $("methodList").addEventListener("click", (ev) => {
+    const row = ev.target.closest("button[data-method]");
+    if (!row) return;
+    const method = row.dataset.method;
     if (state.methods.has(method)) {
       if (state.methods.size === 1) return;
       state.methods.delete(method);
-      chip.classList.remove("on");
+      row.classList.remove("on");
     } else {
       state.methods.add(method);
-      chip.classList.add("on");
+      row.classList.add("on");
     }
     $("modelField").classList.toggle("hidden", !state.methods.has("learned"));
   });
@@ -963,7 +844,17 @@ function bind() {
     [...$("viewSeg").children].forEach((b) => b.classList.toggle("on", b === btn));
     state.view = btn.dataset.view;
     stopPlayback();
-    renderAll();
+    render();
+  });
+
+  $("btnPlay").addEventListener("click", togglePlayback);
+  $("btnPrev").addEventListener("click", () => gotoFrame(state.index - 1));
+  $("btnNext").addEventListener("click", () => gotoFrame(state.index + 1));
+
+  $("quadSource").addEventListener("change", (e) => {
+    state.quadSlot = Number(e.target.value) || 0;
+    state.quadCache.clear();
+    renderQuad();
   });
 
   $("btnDisplay").addEventListener("click", (ev) => {
@@ -976,25 +867,22 @@ function bind() {
   ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred"].forEach((id) => {
     $(id).addEventListener("change", () => {
       state.quadCache.clear();
-      if (state.results.length) renderAll();
+      state.stripKey = "";
+      state.strip = null;
+      if (state.results.length) render();
     });
   });
   $("dispPixelated").addEventListener("change", () => {
     const on = $("dispPixelated").checked;
-    $("compareGrid").classList.toggle("pixelated", on);
-    $("quadGrid").classList.toggle("pixelated", on);
+    $("columns").classList.toggle("pixelated", on);
+    $("quad").classList.toggle("pixelated", on);
   });
 
-  $("quadSource").addEventListener("change", (e) => {
-    state.active = Number(e.target.value) || 0;
-    state.quadCache.clear();
-    renderQuad();
+  $("btnAllMetrics").addEventListener("click", () => $("metricSheet").classList.remove("hidden"));
+  $("btnCloseSheet").addEventListener("click", () => $("metricSheet").classList.add("hidden"));
+  $("metricSheet").addEventListener("click", (ev) => {
+    if (ev.target === $("metricSheet")) $("metricSheet").classList.add("hidden");
   });
-
-  $("btnPlay").addEventListener("click", togglePlayback);
-  $("btnPrev").addEventListener("click", () => gotoFrame(state.index - 1));
-  $("btnNext").addEventListener("click", () => gotoFrame(state.index + 1));
-  $("slider").addEventListener("input", (e) => gotoFrame(Number(e.target.value)));
 
   window.addEventListener("keydown", (e) => {
     if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
@@ -1004,12 +892,10 @@ function bind() {
     else if (e.code === "ArrowRight") { e.preventDefault(); gotoFrame(state.index + 1); }
   });
 
-  $("archiveSelect").addEventListener("change", (e) => loadArchive(e.target.value));
-
   const exportQuad = async (format) => {
-    const result = state.results[state.active] || state.results[0];
+    const result = state.results[state.slots[state.quadSlot] ?? state.slots[0]];
     if (!result) return;
-    $("exportStatus").innerHTML = `<span class="badge warn">正在渲染 ${format.toUpperCase()}…</span>`;
+    $("exportStatus").textContent = `正在渲染 ${format.toUpperCase()}…`;
     try {
       const res = await apiJson("/api/browser/export", {
         method: "POST",
@@ -1023,10 +909,9 @@ function bind() {
           settings: getSettings(),
         }),
       });
-      $("exportStatus").innerHTML =
-        `<span class="badge ok">已导出</span> <a class="btn btn-sm btn-primary" href="${res.download_url}">下载 ${escapeHtml(res.filename)}</a>`;
+      $("exportStatus").innerHTML = `<a class="btn btn-sm btn-primary" href="${res.download_url}">下载 ${esc(res.filename)}</a>`;
     } catch (err) {
-      $("exportStatus").innerHTML = `<span class="badge err">${escapeHtml(err.message)}</span>`;
+      $("exportStatus").textContent = err.message;
     }
   };
   $("btnGif").addEventListener("click", () => exportQuad("gif"));
@@ -1035,6 +920,6 @@ function bind() {
 
 bind();
 boot().catch((err) => {
-  const el = $("inputHint");
-  if (el) el.textContent = `初始化失败：${err.message}`;
+  const el = $("stageEmpty");
+  if (el) { el.classList.remove("hidden"); el.textContent = `初始化失败：${err.message}`; }
 });

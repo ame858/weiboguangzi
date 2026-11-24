@@ -70,6 +70,7 @@ class _MtimeLRU:
 _SEQ_CACHE = _MtimeLRU(maxsize=8)
 _PRED_CACHE = _MtimeLRU(maxsize=16)
 _TRACK_CACHE = _MtimeLRU(maxsize=16)
+_STRIP_CACHE = _MtimeLRU(maxsize=8)
 
 
 def _mtime(path: Path) -> float:
@@ -698,6 +699,58 @@ def api_browser_frames(req: BatchFrameRequest):
         single = req.model_copy(update={"index": index})
         payloads.append(_frame_payload(single))
     return JSONResponse(_clean({"frames": payloads}))
+
+
+class StripRequest(BaseModel):
+    sequence_dir: str
+    detect_dir: str | None = None
+    settings: DisplaySettings = DisplaySettings()
+    width: int = 96
+
+
+def _strip_payload(req: StripRequest) -> dict[str, Any]:
+    """Small thumbnails for every frame, so the filmstrip costs one request."""
+    seq_path = _opt_path(req.sequence_dir)
+    if seq_path is None:
+        raise HTTPException(status_code=400, detail="缺少序列目录")
+    seq = _cached_sequence(seq_path)
+    if seq is None:
+        raise HTTPException(status_code=400, detail="无法加载序列")
+    frames = seq["frames"]
+    detect_path = _opt_path(req.detect_dir)
+    predictions = _cached_predictions(detect_path, frames.shape)
+    settings = req.settings.model_dump()
+
+    width = max(48, min(240, int(req.width)))
+    scale = width / float(frames.shape[2])
+    height = max(1, int(round(frames.shape[1] * scale)))
+    thumbs = []
+    for index in range(len(frames)):
+        view = viz.enhance(frames[index], settings["mode"], settings["cmap"], settings["denoise"])
+        if predictions is not None and settings["show_pred"]:
+            view = viz.overlay_mask(view, predictions[index], viz.PREDICTION_COLOR)
+        if seq["masks"] is not None and settings["show_truth"]:
+            view = viz.overlay_mask(view, seq["masks"][index], viz.TRUTH_COLOR)
+        image = Image.fromarray(np.asarray(view, dtype=np.uint8)).resize(
+            (width, height), Image.Resampling.NEAREST)
+        thumbs.append(_encode_png(np.asarray(image)))
+    return {"count": len(thumbs), "width": width, "height": height, "thumbs": thumbs}
+
+
+@app.post("/api/browser/strip")
+def api_browser_strip(req: StripRequest):
+    seq_path = _opt_path(req.sequence_dir)
+    detect_path = _opt_path(req.detect_dir)
+    key = (
+        str(seq_path.resolve()) if seq_path else "",
+        _mtime(seq_path / "frames.npy") if seq_path else 0.0,
+        str(detect_path.resolve()) if detect_path else "",
+        _mtime(detect_path / "predictions.npy") if detect_path else 0.0,
+        tuple(sorted(req.settings.model_dump().items())),
+        int(req.width),
+    )
+    return JSONResponse(_clean(_STRIP_CACHE.get(key, lambda: _strip_payload(req))))
+
 
 
 @app.post("/api/browser/export")
