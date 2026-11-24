@@ -1508,6 +1508,67 @@
       .btn, .play-btn, .method, .icon-btn, .col, .run-steps { transition: none !important; }
     }
 
+    /* ---------- v2.0 评测看板：硬隔离分区指标 + 原生 SVG FROC ---------- */
+    .stage.v2-mode > .stage-bar,
+    .stage.v2-mode > #stageEmpty,
+    .stage.v2-mode > #columns,
+    .stage.v2-mode > #quad,
+    .stage.v2-mode > #quadBar,
+    .stage.v2-mode > #videoStage,
+    .stage.v2-mode > #colHint,
+    .stage.v2-mode > #pills,
+    .stage.v2-mode > #strip { display: none !important; }
+    .v2-panel {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .v2-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .v2-head b { font-size: 15px; font-weight: 600; }
+    .v2-meta { margin-left: auto; display: flex; gap: 6px 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--on-3); }
+    .v2-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .metric-card {
+      background: var(--surface-white);
+      border: 1px solid var(--outline);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-1);
+      min-width: 0;
+    }
+    .card-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: var(--surface);
+    }
+    .card-head b { font-size: 13px; font-weight: 600; }
+    .card-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cta); }
+    .metric-card.synth .card-head .dot { background: #8b5cf6; }
+    .card-head .mono { margin-left: auto; font-size: 11px; color: var(--on-3); }
+    .card-body { padding: 8px 12px 12px; overflow: auto; }
+    .v2-empty { padding: 24px 8px; text-align: center; color: var(--on-3); font-size: 12.5px; }
+    table.v2-metrics { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    table.v2-metrics th, table.v2-metrics td {
+      padding: 6px 8px; border-bottom: 1px solid var(--outline);
+      text-align: right; white-space: nowrap;
+    }
+    table.v2-metrics th:first-child, table.v2-metrics td:first-child { text-align: left; }
+    table.v2-metrics th { color: var(--on-3); font-weight: 500; background: var(--surface); position: sticky; top: 0; }
+    .froc-card {
+      background: var(--surface-white); border: 1px solid var(--outline);
+      border-radius: var(--r-md); padding: 12px 14px;
+    }
+    .froc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .froc-head b { font-size: 13px; font-weight: 600; }
+    .froc-head .lbl { margin-left: auto; }
+    #v2Froc { width: 100%; height: 280px; display: block; }
+    .froc-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+    .froc-legend .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--on-2); }
+    .froc-legend .sw { width: 10px; height: 10px; border-radius: 3px; }
+    @media (max-width: 900px) { .v2-cards { grid-template-columns: 1fr; } }
+
     .hidden { display: none !important; }
 
     /* ---------- 响应式断点 ---------- */
@@ -1636,6 +1697,32 @@
           </div>
         </section>
 
+        <section id="v2Section">
+          <h2>v2.0 评测运行</h2>
+          <fieldset>
+            <span class="lbl">运行模式</span>
+            <select id="v2Mode" aria-label="运行模式">
+              <option value="smoke">smoke · 冒烟验证</option>
+              <option value="simulate">simulate · 仿真序列</option>
+              <option value="eval-vsmb">eval-vsmb · VSMB 实测盲测</option>
+              <option value="eval-snl">eval-snl · SNL 实测盲测</option>
+            </select>
+          </fieldset>
+          <label class="switch-row" id="v2MwpRow"><span>MWP 物理退化（仅 simulate）</span><input type="checkbox" id="v2Mwp" /></label>
+          <fieldset id="v2DataRootField" class="hidden">
+            <span class="lbl">数据目录（eval 模式）</span>
+            <input type="text" id="v2DataRoot" placeholder="VSMB / SNL 本地绝对路径" />
+          </fieldset>
+          <fieldset>
+            <span class="lbl">历史 v2.0 运行</span>
+            <select id="v2RunSelect" aria-label="历史 v2.0 运行"><option value="">— 选择历史运行 —</option></select>
+          </fieldset>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-sm" id="btnV2Refresh" style="flex:0 0 auto;">刷新</button>
+            <button class="btn btn-sm" id="btnV2Run" style="flex:1;">运行基准</button>
+          </div>
+        </section>
+
         <!-- 默认折叠，确保首屏完整露出「选数据 → 选模型 → 运行检测」闭环 -->
         <details id="advDetails">
           <summary>高级</summary>
@@ -1692,6 +1779,30 @@
           <option value="16">16 FPS</option>
         </select>
       </div>
+
+      <!-- v2.0 评测看板：实测盲测区与仿真消融区永久隔离，绝不合并求平均 -->
+      <section id="v2Panel" class="v2-panel hidden">
+        <div class="v2-head">
+          <b>v2.0 评测看板</b>
+          <span class="mono" id="v2RunId"></span>
+          <div class="v2-meta" id="v2Meta"></div>
+        </div>
+        <div class="v2-cards">
+          <article class="metric-card real" id="v2RealCard">
+            <div class="card-head"><span class="dot"></span><b>实测盲测区 · real_blind_eval</b><span class="mono" id="v2RealCount"></span></div>
+            <div class="card-body" id="v2RealBody"></div>
+          </article>
+          <article class="metric-card synth" id="v2SynthCard">
+            <div class="card-head"><span class="dot"></span><b>仿真消融区 · synthetic_ablation</b><span class="mono" id="v2SynthCount"></span></div>
+            <div class="card-body" id="v2SynthBody"></div>
+          </article>
+        </div>
+        <div class="froc-card">
+          <div class="froc-head"><b>FROC 曲线</b><span class="lbl">横轴 FA/frame · 纵轴 Recall</span></div>
+          <svg id="v2Froc" viewBox="0 0 720 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="FROC 曲线"></svg>
+          <div class="froc-legend" id="v2FrocLegend"></div>
+        </div>
+      </section>
 
       <div class="empty-note" id="stageEmpty">左侧选好序列与模型，点「运行检测」。已有结果会自动载入。</div>
 

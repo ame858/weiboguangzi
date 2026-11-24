@@ -66,6 +66,7 @@ const state = {
   sides: [],
   videoResult: null,
   stepNo: 0,
+  v2: { runs: [], runId: "", data: null },
 };
 
 /* ------------------------------------------------------------ Gemini M3 custom select */
@@ -322,6 +323,8 @@ async function boot() {
   syncM3Select($("dispCmap"));
   $("modelPath").value = data.defaults.unet_model || "";
   await reloadSequences();
+  v2ModeChanged();
+  await loadV2Runs();
 }
 
 async function reloadSequences(refresh = false) {
@@ -351,6 +354,7 @@ async function reloadSequences(refresh = false) {
 /* ------------------------------------------------------------ input */
 async function loadSequence(path) {
   if (!path) return;
+  setV2Mode(false);
   state.kind = "sequence";
   state.seq = path;
   state.index = 0;
@@ -1019,8 +1023,186 @@ async function runVideoDetection() {
   }
 }
 
+/* ------------------------------------------------------------ v2.0 benchmark contract
+   The two partitions are rendered into separate cards from separate keys;
+   there is deliberately no combined / averaged score anywhere in this view. */
+const V2_METRIC_ROWS = [
+  { key: "map_50", label: "mAP@50", digits: 3 },
+  { key: "map_30", label: "mAP@30", digits: 3 },
+  { key: "recall_at_1_fa", label: "Recall@1FA", digits: 3 },
+  { key: "fa_per_frame_50", label: "FA/frame", digits: 3 },
+  { key: "mota", label: "MOTA", digits: 3 },
+  { key: "idf1", label: "IDF1", digits: 3 },
+  { key: "hota", label: "HOTA", digits: 3 },
+  { key: "id_switches", label: "ID Switches", digits: 0 },
+];
+const V2_FROC_COLORS = ["#0b57d0", "#b3261e", "#146c2e", "#8b5cf6", "#9a5b00", "#00838f", "#c2185b", "#5f6368"];
+
+function setV2Mode(on) {
+  document.querySelector(".stage")?.classList.toggle("v2-mode", Boolean(on));
+  $("v2Panel")?.classList.toggle("hidden", !on);
+}
+
+function v2ModeChanged() {
+  const mode = $("v2Mode").value;
+  const mwp = $("v2Mwp");
+  mwp.disabled = mode !== "simulate";
+  if (mwp.disabled) mwp.checked = false;
+  $("v2DataRootField").classList.toggle("hidden", !mode.startsWith("eval-"));
+}
+
+async function loadV2Runs() {
+  const data = await apiJson("/api/v2/runs");
+  state.v2.runs = data.runs || [];
+  const sel = $("v2RunSelect");
+  const previous = sel.value;
+  sel.innerHTML = '<option value="">— 选择历史运行 —</option>';
+  for (const run of state.v2.runs) {
+    const opt = document.createElement("option");
+    opt.value = run.run_id;
+    const flags = [run.has_real ? "实测" : "", run.has_synthetic ? "仿真" : ""].filter(Boolean).join("+");
+    opt.textContent = `${run.run_id} · ${run.mode}${flags ? " · " + flags : ""}`;
+    opt.title = `${run.path}\n${run.timestamp}`;
+    sel.appendChild(opt);
+  }
+  if (previous && [...sel.options].some((o) => o.value === previous)) sel.value = previous;
+  syncM3Select(sel);
+}
+
+async function loadV2Run(runId) {
+  state.v2.runId = runId || "";
+  if (!runId) { state.v2.data = null; setV2Mode(false); return; }
+  const encoded = String(runId).split("/").map(encodeURIComponent).join("/");
+  const data = await apiJson(`/api/v2/runs/${encoded}`);
+  state.v2.data = data;
+  setV2Mode(true);
+  renderV2(data);
+}
+
+function renderV2(data) {
+  $("v2RunId").textContent = data.run_id || "";
+  const meta = [];
+  if (data.mode) meta.push(`模式 <span class="mono">${esc(data.mode)}</span>`);
+  if (data.timestamp_utc) meta.push(`时间 <span class="mono">${esc(data.timestamp_utc)}</span>`);
+  if (data.git_commit) meta.push(`git <span class="mono">${esc(String(data.git_commit).slice(0, 10))}</span>`);
+  if (data.seed !== null && data.seed !== undefined) meta.push(`seed <span class="mono">${esc(data.seed)}</span>`);
+  $("v2Meta").innerHTML = meta.join('<span class="sep"> | </span>');
+  const summary = data.summary || [];
+  renderV2Partition("v2RealBody", "v2RealCount", "real", summary, data);
+  renderV2Partition("v2SynthBody", "v2SynthCount", "synthetic", summary, data);
+  renderFroc(data.froc_curve || []);
+}
+
+function renderV2Partition(bodyId, countId, domain, summary, data) {
+  const body = $(bodyId);
+  const partition = domain === "real" ? (data.real_blind_eval || {}) : (data.synthetic_ablation || {});
+  const names = new Set(Object.keys(partition));
+  const rows = (summary || []).filter((r) => r.domain === domain || names.has(r.split_name));
+  if (!rows.length) {
+    $(countId).textContent = "0 split";
+    body.innerHTML = '<div class="v2-empty">本次运行未包含该分区</div>';
+    return;
+  }
+  $(countId).textContent = `${rows.length} split`;
+  const head = ["split_name", "domain", ...V2_METRIC_ROWS.map((r) => r.label)];
+  let html = '<table class="v2-metrics"><thead><tr>' + head.map((h) => `<th>${esc(h)}</th>`).join("") + '</tr></thead><tbody>';
+  for (const row of rows) {
+    html += `<tr><td>${esc(row.split_name)}</td><td>${esc(row.domain)}</td>`;
+    for (const metric of V2_METRIC_ROWS) html += `<td>${fmt(row[metric.key], metric.digits)}</td>`;
+    html += '</tr>';
+  }
+  body.innerHTML = html + '</tbody></table>';
+}
+
+function renderFroc(points) {
+  const svg = $("v2Froc");
+  const legend = $("v2FrocLegend");
+  if (!svg || !legend) return;
+  svg.innerHTML = "";
+  legend.innerHTML = "";
+  if (!points.length) {
+    svg.innerHTML = '<text x="360" y="150" text-anchor="middle" font-size="13" fill="#747775">本次运行无 FROC 曲线数据</text>';
+    return;
+  }
+  const groups = new Map();
+  points.forEach((point) => {
+    const key = `${point.split_name}||${point.domain}`;
+    if (!groups.has(key)) groups.set(key, { split: point.split_name, domain: point.domain, pts: [] });
+    groups.get(key).pts.push(point);
+  });
+  const width = 720, height = 300, left = 64, right = 18, top = 16, bottom = 44;
+  const pw = width - left - right, ph = height - top - bottom;
+  const maxFa = Math.max(1, ...points.map((p) => Number(p.fa_per_frame) || 0));
+  const px = (v) => left + (Math.max(0, Number(v) || 0) / maxFa) * pw;
+  const py = (v) => top + (1 - Math.max(0, Math.min(1, Number(v) || 0))) * ph;
+  const parts = [];
+  for (let i = 0; i <= 4; i++) {
+    const gy = top + (ph * i) / 4;
+    parts.push(`<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="#e1e5ec" stroke-width="1"/>`);
+    parts.push(`<text x="${left - 8}" y="${gy + 4}" text-anchor="end" font-size="11" fill="#747775">${(1 - i / 4).toFixed(2)}</text>`);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const gx = left + (pw * i) / 5;
+    parts.push(`<line x1="${gx}" y1="${top}" x2="${gx}" y2="${top + ph}" stroke="#e1e5ec" stroke-width="1"/>`);
+    parts.push(`<text x="${gx}" y="${top + ph + 18}" text-anchor="middle" font-size="11" fill="#747775">${((maxFa * i) / 5).toFixed(2)}</text>`);
+  }
+  parts.push(`<line x1="${left}" y1="${top + ph}" x2="${width - right}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
+  parts.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
+  parts.push(`<text x="${left + pw / 2}" y="${height - 6}" text-anchor="middle" font-size="11" fill="#444746">FA / frame</text>`);
+  parts.push(`<text x="14" y="${top + ph / 2}" text-anchor="middle" font-size="11" fill="#444746" transform="rotate(-90 14 ${top + ph / 2})">Recall</text>`);
+  let colorIndex = 0;
+  for (const group of groups.values()) {
+    const color = V2_FROC_COLORS[colorIndex % V2_FROC_COLORS.length];
+    const ordered = [...group.pts].sort((a, b) => (Number(a.fa_per_frame) || 0) - (Number(b.fa_per_frame) || 0));
+    const d = ordered.map((p, i) => `${i ? "L" : "M"}${px(p.fa_per_frame).toFixed(2)},${py(p.recall).toFixed(2)}`).join(" ");
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`);
+    legend.insertAdjacentHTML("beforeend", `<span class="lg"><span class="sw" style="background:${color}"></span>${esc(`${group.split} · ${group.domain}`)}</span>`);
+    colorIndex++;
+  }
+  svg.innerHTML = parts.join("");
+}
+
+async function runV2Benchmark() {
+  const mode = $("v2Mode").value;
+  const body = { mode, mwp_enabled: mode === "simulate" && $("v2Mwp").checked };
+  if (mode.startsWith("eval-")) {
+    const root = $("v2DataRoot").value.trim();
+    if (!root) { alert("评测模式请先填写数据目录"); return; }
+    body.data_root = root;
+  }
+  const button = $("btnV2Run");
+  button.disabled = true;
+  try {
+    const result = await apiJson("/api/v2/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    // The same SSE log stream drives the floating card; on completion the
+    // freshly written run is selected and its result is re-fetched.
+    streamJob(result.job_id, async (ok, jobResult) => {
+      button.disabled = false;
+      if (!ok || !jobResult || !jobResult.run_id) return;
+      await loadV2Runs();
+      $("v2RunSelect").value = jobResult.run_id;
+      syncM3Select($("v2RunSelect"));
+      await loadV2Run(jobResult.run_id);
+    });
+  } catch (err) {
+    button.disabled = false;
+    setBadge($("runBadge"), "启动失败", "err");
+    $("logWrap").classList.remove("hidden", "collapsed");
+    $("runDots").classList.add("err");
+    $("runTitle").textContent = "启动失败";
+    $("log").classList.remove("hidden");
+    $("btnRawLog").textContent = "隐藏日志";
+    $("log").textContent = err.message;
+  }
+}
+
 /* ------------------------------------------------------------ video crop */
 function setKind(kind) {
+  setV2Mode(false);
   state.kind = kind;
   [...$("kindSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.kind === kind));
   $("seqPane").classList.toggle("hidden", kind !== "sequence");
@@ -1221,6 +1403,12 @@ function bind() {
   });
 
   $("btnRun").addEventListener("click", runDetection);
+  $("v2Mode").addEventListener("change", v2ModeChanged);
+  $("btnV2Refresh").addEventListener("click", () =>
+    loadV2Runs().catch((err) => setBadge($("runBadge"), err.message, "err")));
+  $("v2RunSelect").addEventListener("change", (e) =>
+    loadV2Run(e.target.value).catch((err) => setBadge($("runBadge"), err.message, "err")));
+  $("btnV2Run").addEventListener("click", runV2Benchmark);
   $("btnRawLog").addEventListener("click", (ev) => {
     ev.stopPropagation();
     $("logWrap").classList.remove("collapsed");

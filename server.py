@@ -16,6 +16,7 @@ import io
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,8 +39,16 @@ from pydantic import BaseModel
 from videosar_ui import commands as cmd
 from videosar_ui import imaging as viz
 from videosar_ui import scanning as scan
+from videosar_ui import v2_contract as v2
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+V2_RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
+
+
+def _v2_outputs_root() -> Path:
+    """Outputs root for v2 runs; env override keeps tests / deployments isolated."""
+    override = os.environ.get("VIDEOSAR_OUTPUTS_ROOT")
+    return _opt_path(override) if override else (scan.REPO_ROOT / "outputs")
 
 app = FastAPI(title="Ka Video SAR Shadow Workbench", version="2.0.0")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
@@ -502,6 +511,13 @@ class DetectVideoJobRequest(BaseModel):
     start_frame: int = 0
     max_frames: int = 24
     model: str | None = None
+
+
+class V2RunRequest(BaseModel):
+    mode: str = "smoke"
+    mwp_enabled: bool = False
+    data_root: str | None = None
+    run_name: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -1137,6 +1153,61 @@ def api_job_detect_video(req: DetectVideoJobRequest):
 
     job_id = _start_job([command], collect)
     return JSONResponse({"job_id": job_id})
+
+
+# ---------------------------------------------------------------------------
+# Video-SAR v2.0 benchmark contract (runs live under outputs/)
+# ---------------------------------------------------------------------------
+@app.get("/api/v2/runs")
+def api_v2_runs():
+    outputs = _v2_outputs_root()
+    return JSONResponse(_clean({
+        "outputs_root": str(outputs),
+        "runs": v2.list_v2_runs(outputs),
+    }))
+
+
+@app.get("/api/v2/runs/{run_id:path}")
+def api_v2_run_detail(run_id: str):
+    run_dir = v2.resolve_run_dir(_v2_outputs_root(), run_id)
+    if run_dir is None:
+        raise HTTPException(status_code=404, detail=f"v2.0 运行不存在或 run_id 非法：{run_id}")
+    data = v2.load_v2_run(run_dir)
+    data["run_id"] = run_id.replace("\\", "/")
+    return JSONResponse(_clean(data))
+
+
+@app.post("/api/v2/run")
+def api_v2_run(req: V2RunRequest):
+    if req.mode not in v2.V2_MODES:
+        raise HTTPException(status_code=400, detail=f"未知的运行模式：{req.mode}")
+    data_root = _opt_path(req.data_root)
+    if req.mode.startswith("eval-"):
+        if data_root is None or not data_root.is_dir():
+            raise HTTPException(status_code=400, detail="评测模式需要提供存在的数据目录")
+    if req.run_name:
+        name = req.run_name.strip()
+        if not V2_RUN_NAME_RE.match(name):
+            raise HTTPException(status_code=400, detail="run_name 仅允许字母、数字、下划线与连字符")
+    else:
+        stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+        name = f"v2-{req.mode}-{stamp}"
+
+    outputs = _v2_outputs_root()
+    run_dir = outputs / name
+    command = cmd.build_v2_benchmark_command(
+        req.mode, run_dir, mwp_enabled=req.mwp_enabled,
+        data_root=str(data_root) if data_root else None,
+    )
+    job_id = _start_job([command], lambda: {
+        "run_id": name,
+        "run_dir": str(run_dir),
+    })
+    return JSONResponse({
+        "job_id": job_id,
+        "run_id": name,
+        "stream_url": f"/api/jobs/{job_id}/stream",
+    })
 
 
 @app.get("/api/jobs/{job_id}/stream")
