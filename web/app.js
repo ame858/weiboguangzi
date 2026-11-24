@@ -35,7 +35,7 @@ const state = {
   crop: { x: 0, y: 0, w: 0, h: 0 },
   dragging: false,
   dragStart: null,
-  methods: new Set(["threshold", "learned"]),
+  methods: new Set(["threshold", "difference", "learned"]),
   results: [],
   slots: [],
   quadSlot: 0,
@@ -67,6 +67,12 @@ const fmt = (v, digits = 3) =>
   v === null || v === undefined || !Number.isFinite(v)
     ? "—"
     : digits === 0 ? String(Math.round(v)) : v.toFixed(digits);
+
+function padSlots(list) {
+  const out = list.slice(0, 3);
+  while (out.length < 3) out.push(-1);
+  return out;
+}
 
 function labelOf(result) {
   if (!result) return "—";
@@ -189,7 +195,7 @@ async function loadSequence(path) {
           evaluate: auto.metrics || null,
         }]
       : [];
-    state.slots = state.results.length ? [0] : [];
+    state.slots = padSlots(state.results.length ? [0] : []);
     state.quadSlot = 0;
     await refreshMeta();
     await render();
@@ -200,7 +206,7 @@ async function loadSequence(path) {
 }
 
 async function refreshMeta() {
-  const first = state.results[state.slots[0]] || state.results[0];
+  const first = state.results[state.slots.find((i) => i >= 0)] || state.results[0];
   try {
     state.meta = await apiJson("/api/browser/meta", {
       method: "POST",
@@ -261,81 +267,121 @@ function frameLabel() {
     : "帧 0 / 0";
 }
 
+const SLOT_COUNT = 3;
+
+function slotOptions(current) {
+  const list = state.results
+    .map((r, idx) => `<option value="${idx}"${current === idx ? " selected" : ""}>${esc(labelOf(r))}</option>`)
+    .join("");
+  const empty = current < 0 ? " selected" : "";
+  return `<option value="-1"${empty}>（空位）</option>${list}`;
+}
+
 async function renderColumns() {
-  const sides = state.slots
-    .map((idx) => state.results[idx])
-    .filter(Boolean)
-    .map((r) => ({ detect_dir: r.detect, evaluate_dir: r.evaluate || null, label: labelOf(r) }));
+  const filled = state.slots
+    .map((idx, slot) => ({ slot, idx }))
+    .filter((x) => x.idx >= 0 && state.results[x.idx]);
 
-  let data;
-  try {
-    data = await apiJson("/api/compare/frame", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sequence_dir: state.seq, sides, index: state.index, settings: getSettings() }),
-    });
-  } catch (err) {
-    $("stageEmpty").classList.remove("hidden");
-    $("stageEmpty").textContent = err.message;
-    return;
+  let data = null;
+  if (filled.length) {
+    try {
+      data = await apiJson("/api/compare/frame", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sequence_dir: state.seq,
+          sides: filled.map((x) => {
+            const r = state.results[x.idx];
+            return { detect_dir: r.detect, evaluate_dir: r.evaluate || null, label: labelOf(r) };
+          }),
+          index: state.index,
+          settings: getSettings(),
+        }),
+      });
+    } catch (err) {
+      $("stageEmpty").classList.remove("hidden");
+      $("stageEmpty").textContent = err.message;
+      return;
+    }
+    state.count = data.count;
+    state.index = data.index;
+    frameLabel();
   }
-  state.sides = data.sides;
-  state.count = data.count;
-  state.index = data.index;
-  frameLabel();
 
-  const canAdd = state.results.length > state.slots.length && state.slots.length < 3;
-  $("columns").style.setProperty("--cols", String(state.slots.length + (canAdd ? 1 : 0)));
+  const bySlot = new Map();
+  if (data) filled.forEach((x, k) => bySlot.set(x.slot, data.sides[k]));
+  state.sides = [...bySlot.values()];
   $("columns").classList.toggle("pixelated", $("dispPixelated").checked);
 
-  const cards = data.sides
-    .map((side, i) => {
-      const s = side.summary || {};
-      const options = state.results
-        .map((r, idx) => `<option value="${idx}"${state.slots[i] === idx ? " selected" : ""}>${esc(labelOf(r))}</option>`)
-        .join("");
-      return `
+  const cells = [];
+  for (let slot = 0; slot < SLOT_COUNT; slot++) {
+    const side = bySlot.get(slot);
+    const current = state.slots[slot] ?? -1;
+    const head = `
+      <div class="col-head">
+        <select class="slotPick" data-slot="${slot}">${slotOptions(current)}</select>
+        <span class="f1">${side ? `F1 ${fmt(side.summary?.target_f1)}` : ""}</span>
+      </div>`;
+    if (!side) {
+      cells.push(`
+        <div class="col">
+          ${head}
+          <button class="slot-empty" data-slot="${slot}">
+            <span>空位</span>
+            <span style="font-size:11px;">点击选择已有结果，或在左侧勾选模型后运行</span>
+          </button>
+          <div class="col-foot"></div>
+        </div>`);
+      continue;
+    }
+    const s = side.summary || {};
+    cells.push(`
       <div class="col">
-        <div class="col-head">
-          <select class="slotPick" data-slot="${i}">${options}</select>
-          <span class="f1">F1 ${fmt(s.target_f1)}</span>
-        </div>
+        ${head}
         <div class="col-img"><img src="${side.image}" alt="${esc(side.label)}" /></div>
         <div class="col-foot">
           <span>IoU <span class="hot">${fmt(s.iou)}</span></span>
           <span>虚警/帧 <span class="hot">${fmt(s.fp_per_frame, 2)}</span></span>
           <span>重叠 <span class="hot">${esc(side.overlap)}</span> px</span>
         </div>
-      </div>`;
-    })
-    .join("");
-
-  $("columns").innerHTML = cards + (canAdd ? `<button class="add-slot" id="btnAddSlot">+ 添加模型</button>` : "");
-  if (canAdd) {
-    $("btnAddSlot").addEventListener("click", () => {
-      const next = state.results.findIndex((_, i) => !state.slots.includes(i));
-      if (next >= 0) {
-        state.slots.push(next);
-        render();
-      }
-    });
+      </div>`);
   }
-  for (const sel of document.querySelectorAll(".slotPick")) {
+  $("columns").innerHTML = cells.join("");
+
+  for (const sel of document.querySelectorAll("#columns .slotPick")) {
     sel.addEventListener("change", (ev) => {
+      ev.stopPropagation();
       const slot = Number(ev.target.dataset.slot);
-      state.slots[slot] = Number(ev.target.value);
+      const value = Number(ev.target.value);
+      if (value >= 0) {
+        // Picking a result that already occupies another column swaps the two,
+        // so a comparison never shows the same model twice.
+        const other = state.slots.indexOf(value);
+        if (other >= 0 && other !== slot) state.slots[other] = state.slots[slot];
+      }
+      state.slots[slot] = value;
       render();
     });
+    sel.addEventListener("click", (ev) => ev.stopPropagation());
   }
+  for (const box of document.querySelectorAll("#columns .slot-empty")) {
+    box.addEventListener("click", () => {
+      const slot = Number(box.dataset.slot);
+      const sel = document.querySelector(`#columns .slotPick[data-slot="${slot}"]`);
+      if (sel?.showPicker) sel.showPicker();
+      else sel?.focus();
+    });
+  }
+
   const hint = $("colHint");
-  if (state.slots.length === 1) {
+  if (filled.length < SLOT_COUNT) {
     hint.classList.remove("hidden");
-    hint.textContent = "当前只有 1 个结果。在左侧多勾一个模型再运行，就能并排对比。";
+    hint.textContent = `还有 ${SLOT_COUNT - filled.length} 列空着：在左侧多勾几个模型再运行，或在列头直接选已有结果。`;
   } else {
     hint.classList.add("hidden");
   }
-  renderPills(data.sides);
-  renderMetricTable(data.sides);
+  renderPills(state.sides);
+  renderMetricTable(state.sides);
 }
 
 function pillCard(label, value, delta, digits = 3) {
@@ -408,7 +454,7 @@ function renderMetricTable(sides) {
 }
 
 async function renderQuad() {
-  const idx = state.slots[state.quadSlot] ?? state.slots[0] ?? 0;
+  const idx = state.slots[state.quadSlot] >= 0 ? state.slots[state.quadSlot] : state.slots.find((i) => i >= 0);
   const result = state.results[idx];
   if (!result) return;
   const key = `${result.detect}|${state.index}|${settingsKey()}`;
@@ -467,7 +513,7 @@ async function renderStrip() {
     $("strip").classList.add("hidden");
     return;
   }
-  const result = state.results[state.slots[0]];
+  const result = state.results[state.slots.find((i) => i >= 0)];
   const key = `${state.seq}|${result?.detect || ""}|${settingsKey()}`;
   if (state.stripKey !== key || !state.strip) {
     try {
@@ -619,7 +665,7 @@ async function runDetection() {
         track: r.track,
         evaluate: r.evaluate,
       }));
-      state.slots = state.results.slice(0, 2).map((_, i) => i);
+      state.slots = padSlots(state.results.slice(0, SLOT_COUNT).map((_, i) => i));
       state.quadSlot = 0;
       state.index = 0;
       state.quadCache.clear();
@@ -677,7 +723,7 @@ function setKind(kind) {
   $("cropSection").classList.toggle("hidden", kind !== "video" || !state.videoInfo);
   if (kind === "video") {
     state.results = [];
-    state.slots = [];
+    state.slots = padSlots([]);
     state.count = 0;
     state.videoResult = null;
     stopPlayback();
@@ -893,7 +939,7 @@ function bind() {
   });
 
   const exportQuad = async (format) => {
-    const result = state.results[state.slots[state.quadSlot] ?? state.slots[0]];
+    const result = state.results[state.slots[state.quadSlot] >= 0 ? state.slots[state.quadSlot] : state.slots.find((i) => i >= 0)];
     if (!result) return;
     $("exportStatus").textContent = `正在渲染 ${format.toUpperCase()}…`;
     try {
