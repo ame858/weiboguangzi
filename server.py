@@ -725,6 +725,29 @@ class StripRequest(BaseModel):
     width: int = 96
 
 
+def _frame_status(pred, truth) -> str:
+    """每帧的粗粒度质量标签，供胶片条底部的 3px 微条使用。
+
+    只做「有没有命中」这一档判断，不引入任何新指标口径：
+    ok / missed / fp_high / unknown（无真值时前端不画条）。
+    """
+    if truth is None:
+        return "unknown"
+    has_truth = bool(np.any(truth))
+    n_pred = int(np.count_nonzero(pred)) if pred is not None else 0
+    if has_truth and n_pred == 0:
+        return "missed"
+    if not has_truth:
+        return "fp_high" if n_pred > 0 else "ok"
+    overlap = int(np.count_nonzero(pred & truth)) if pred is not None else 0
+    if overlap == 0:
+        return "missed"
+    n_truth = int(np.count_nonzero(truth))
+    if n_pred > max(4, 3 * n_truth):
+        return "fp_high"
+    return "ok"
+
+
 def _strip_payload(req: StripRequest) -> dict[str, Any]:
     """Small thumbnails for every frame, so the filmstrip costs one request."""
     seq_path = _opt_path(req.sequence_dir)
@@ -742,16 +765,23 @@ def _strip_payload(req: StripRequest) -> dict[str, Any]:
     scale = width / float(frames.shape[2])
     height = max(1, int(round(frames.shape[1] * scale)))
     thumbs = []
+    statuses = []
     for index in range(len(frames)):
+        pred_i = predictions[index] if predictions is not None else None
+        truth_i = seq["masks"][index] if seq["masks"] is not None else None
         view = viz.enhance(frames[index], settings["mode"], settings["cmap"], settings["denoise"])
-        if predictions is not None and settings["show_pred"]:
-            view = viz.overlay_mask(view, predictions[index], viz.PREDICTION_COLOR)
-        if seq["masks"] is not None and settings["show_truth"]:
-            view = viz.overlay_mask(view, seq["masks"][index], viz.TRUTH_COLOR)
+        if pred_i is not None and settings["show_pred"]:
+            view = viz.overlay_mask(view, pred_i, viz.PREDICTION_COLOR)
+        if truth_i is not None and settings["show_truth"]:
+            view = viz.overlay_mask(view, truth_i, viz.TRUTH_COLOR)
         image = Image.fromarray(np.asarray(view, dtype=np.uint8)).resize(
             (width, height), Image.Resampling.NEAREST)
         thumbs.append(_encode_png(np.asarray(image)))
-    return {"count": len(thumbs), "width": width, "height": height, "thumbs": thumbs}
+        statuses.append(_frame_status(pred_i, truth_i))
+    return {
+        "count": len(thumbs), "width": width, "height": height,
+        "thumbs": thumbs, "frame_status": statuses,
+    }
 
 
 @app.post("/api/browser/strip")
@@ -857,9 +887,9 @@ def api_compare_frame(req: CompareFrameRequest):
     for detect_dir, evaluate_dir, label in targets:
         pred = _cached_predictions(_opt_path(detect_dir), frames.shape)
         view = base.copy()
-        if pred is not None:
+        if pred is not None and s["show_pred"]:
             view = viz.overlay_mask(view, pred[idx], viz.PREDICTION_COLOR)
-        if truth is not None:
+        if truth is not None and s["show_truth"]:
             view = viz.overlay_mask(view, truth[idx], viz.TRUTH_COLOR)
         components = viz.count_components(pred[idx]) if pred is not None else None
         overlap = int(np.count_nonzero(pred[idx] & truth[idx])) if pred is not None and truth is not None else None

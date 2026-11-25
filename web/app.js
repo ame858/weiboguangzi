@@ -324,7 +324,12 @@ async function boot() {
   $("modelPath").value = data.defaults.unet_model || "";
   await reloadSequences();
   v2ModeChanged();
-  await loadV2Runs();
+  // v2 历史列表独立容错：即使 /api/v2/runs 暂不可用也不覆盖主工作台
+  try {
+    await loadV2Runs();
+  } catch (err) {
+    console.warn("loadV2Runs skipped:", err);
+  }
 }
 
 async function reloadSequences(refresh = false) {
@@ -359,6 +364,11 @@ async function loadSequence(path) {
   state.seq = path;
   state.index = 0;
   state.quadCache.clear();
+  // 帧缓存与结构签名都绑定在「序列 + 槽位 + 设置」上，换序列必须整段作废，
+  // 否则重进同一批帧会命中上一轮缓存，看到的是旧图。缩放一并复位。
+  colCache.clear();
+  ui.colSig = "";
+  resetZoom();
   state.strip = null;
   state.stripKey = "";
   state.videoResult = null;
@@ -424,6 +434,8 @@ async function render() {
     ["columns", "quad", "quadBar", "pills", "strip", "videoStage", "colHint"].forEach((id) =>
       $(id).classList.add("hidden")
     );
+    const empty = $("splitStage");
+    if (empty) empty.classList.add("hidden");
     $("stageEmpty").classList.remove("hidden");
     $("stageEmpty").textContent = "该序列还没有检测结果。在左侧勾选模型并点「运行检测」。";
     updateCtx();
@@ -431,6 +443,8 @@ async function render() {
   }
   $("stageEmpty").classList.add("hidden");
   $("videoStage").classList.add("hidden");
+  const splitHost = $("splitStage");
+  if (splitHost) splitHost.classList.add("hidden");
 
   if (state.view === "quad") {
     $("columns").classList.add("hidden");
@@ -439,6 +453,13 @@ async function render() {
     $("quad").classList.remove("hidden");
     $("quadBar").classList.remove("hidden");
     await renderQuad();
+  } else if (state.view === "split") {
+    $("columns").classList.add("hidden");
+    $("pills").classList.add("hidden");
+    $("colHint").classList.add("hidden");
+    $("quad").classList.add("hidden");
+    $("quadBar").classList.add("hidden");
+    await renderSplit();
   } else {
     $("quad").classList.add("hidden");
     $("quadBar").classList.add("hidden");
@@ -506,55 +527,94 @@ function openSlotMenu(colEl, slot) {
   colEl.appendChild(menu);
 }
 
-async function renderColumns() {
-  const filled = state.slots
-    .map((idx, slot) => ({ slot, idx }))
-    .filter((x) => x.idx >= 0 && state.results[x.idx]);
+/* T02 帧缓存：LRU 40 帧，键 = 序列 | 槽位组合 | 帧号 | 显示设置 */
+const COL_CACHE_MAX = 40;
+const colCache = new Map();
 
-  let data = null;
-  if (filled.length) {
-    try {
-      data = await apiJson("/api/compare/frame", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sequence_dir: state.seq,
-          sides: filled.map((x) => {
-            const r = state.results[x.idx];
-            return { detect_dir: r.detect, evaluate_dir: r.evaluate || null, label: labelOf(r) };
-          }),
-          index: state.index,
-          settings: getSettings(),
-        }),
-      });
-    } catch (err) {
-      $("stageEmpty").classList.remove("hidden");
-      $("stageEmpty").textContent = err.message;
-      return;
-    }
-    state.count = data.count;
-    state.index = data.index;
-    frameLabel();
-  }
+function cacheGet(key) {
+  if (!colCache.has(key)) return null;
+  const value = colCache.get(key);
+  colCache.delete(key);
+  colCache.set(key, value);          // 命中即刷新热度
+  return value;
+}
 
-  const bySlot = new Map();
-  if (data) filled.forEach((x, k) => bySlot.set(x.slot, data.sides[k]));
-  state.sides = [...bySlot.values()];
-  $("columns").classList.toggle("pixelated", $("dispPixelated").checked);
+function cacheSet(key, value) {
+  if (colCache.has(key)) colCache.delete(key);
+  colCache.set(key, value);
+  while (colCache.size > COL_CACHE_MAX) colCache.delete(colCache.keys().next().value);
+}
 
-  const cells = [];
-  for (let slot = 0; slot < SLOT_COUNT; slot++) {
-    const side = bySlot.get(slot);
-    const current = state.slots[slot] ?? -1;
-    const head = `
+function columnSig(filled) {
+  return [state.seq, filled.map((x) => `${x.slot}:${x.idx}`).join(","), settingsKey()].join("|");
+}
+
+function sidePayload(filled, index) {
+  return {
+    sequence_dir: state.seq,
+    sides: filled.map((x) => {
+      const r = state.results[x.idx];
+      return { detect_dir: r.detect, evaluate_dir: r.evaluate || null, label: labelOf(r) };
+    }),
+    index,
+    settings: getSettings(),
+  };
+}
+
+async function fetchFrame(filled, index) {
+  const key = `${columnSig(filled)}|${index}`;
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  const data = await apiJson("/api/compare/frame", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sidePayload(filled, index)),
+  });
+  cacheSet(key, data);
+  return data;
+}
+
+/* 空闲时预热相邻帧，播放与步进才不会每次都等网络往返 */
+function prefetchNeighbors(filled) {
+  if (!filled.length || state.count <= 1) return;
+  const targets = [state.index - 1, state.index + 1].filter((i) => i >= 0 && i < state.count);
+  if (!targets.length) return;
+  const run = () => targets.forEach((i) => fetchFrame(filled, i).catch(() => {}));
+  if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(run, { timeout: 900 });
+  else setTimeout(run, 160);
+}
+
+const ICON_EXPAND = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/></svg>';
+
+function colHeadHtml(slot, current, side, sideNo) {
+  return `
       <div class="col-head">
         <select class="slotPick" data-slot="${slot}" aria-label="选择槽位 ${slot + 1} 对比结果">${slotOptions(current)}</select>
         <span class="f1">${side ? `F1 ${fmt(side.summary?.target_f1)}` : ""}</span>
+        ${side ? `<button class="col-zoom-btn" data-zoom-side="${sideNo}" type="button" title="放大 (F)" aria-label="放大第 ${slot + 1} 栏">${ICON_EXPAND}</button>` : ""}
       </div>`;
+}
+
+function colFootHtml(side) {
+  const s = side.summary || {};
+  return `
+        <div class="col-foot">
+          <span>IoU <span class="hot" data-metric="iou">${fmt(s.iou)}</span></span>
+          <span>虚警/帧 <span class="hot" data-metric="fp_per_frame">${fmt(s.fp_per_frame, 2)}</span></span>
+          <span>重叠 <span class="hot" data-overlap="1">${esc(side.overlap)}</span> px</span>
+        </div>`;
+}
+
+function rebuildColumns(bySlot) {
+  const cells = [];
+  let sideNo = -1;
+  for (let slot = 0; slot < SLOT_COUNT; slot++) {
+    const side = bySlot.get(slot);
+    const current = state.slots[slot] ?? -1;
     if (!side) {
       cells.push(`
         <div class="col col-empty" data-slot="${slot}" title="点击添加对比结果">
-          ${head}
+          ${colHeadHtml(slot, current, null, -1)}
           <button class="slot-empty" data-slot="${slot}" type="button">
             <span class="slot-plus" aria-hidden="true">+</span>
             <span class="slot-label">添加对比</span>
@@ -564,16 +624,17 @@ async function renderColumns() {
         </div>`);
       continue;
     }
-    const s = side.summary || {};
+    sideNo += 1;
     cells.push(`
-      <div class="col">
-        ${head}
-        <div class="col-img"><img src="${side.image}" alt="${esc(side.label)}" /></div>
-        <div class="col-foot">
-          <span>IoU <span class="hot">${fmt(s.iou)}</span></span>
-          <span>虚警/帧 <span class="hot">${fmt(s.fp_per_frame, 2)}</span></span>
-          <span>重叠 <span class="hot">${esc(side.overlap)}</span> px</span>
+      <div class="col" data-slot="${slot}" data-side="${sideNo}">
+        ${colHeadHtml(slot, current, side, sideNo)}
+        <div class="col-img">
+          <img src="${side.image}" alt="${esc(side.label)}" draggable="false" />
+          <span class="xhair-h" aria-hidden="true"></span>
+          <span class="xhair-v" aria-hidden="true"></span>
+          <span class="zoom-badge" aria-hidden="true">1.0×</span>
         </div>
+        ${colFootHtml(side)}
       </div>`);
   }
   $("columns").innerHTML = cells.join("");
@@ -595,6 +656,86 @@ async function renderColumns() {
       if (colEl) openSlotMenu(colEl, slot);
     });
   }
+}
+
+/* 只换 src 与指标文字，不重建 DOM：图片不闪、缩放与十字准星也不丢 */
+async function patchColumns(bySlot, filled) {
+  const cols = [...document.querySelectorAll("#columns .col")];
+  if (cols.length !== SLOT_COUNT) return false;
+  if (cols.filter((c) => c.dataset.side !== undefined).length !== filled.length) return false;
+
+  const jobs = [];
+  for (let slot = 0; slot < SLOT_COUNT; slot++) {
+    const side = bySlot.get(slot);
+    if (!side) continue;
+    const col = cols.find((c) => Number(c.dataset.slot) === slot && c.dataset.side !== undefined);
+    if (!col) return false;
+    const box = col.querySelector(".col-img");
+    const img = box?.querySelector("img");
+    if (!box || !img) return false;
+
+    if (img.getAttribute("src") !== side.image) {
+      // 骨架屏只在真的等图时出现，缓存命中时不会闪一下
+      const timer = setTimeout(() => box.classList.add("skeleton"), 130);
+      jobs.push(
+        (async () => {
+          // 先在离屏 Image 上解码完，再换 live 节点的 src：
+          // 直接改 live src 会让旧帧先被清空、画面闪白一下
+          const pre = new Image();
+          pre.src = side.image;
+          try { await pre.decode(); } catch { /* 解码失败也照常收尾 */ }
+          img.src = side.image;
+          img.alt = side.label;
+          clearTimeout(timer);
+          box.classList.remove("skeleton");
+        })()
+      );
+    }
+    const s = side.summary || {};
+    const f1 = col.querySelector(".col-head .f1");
+    if (f1) f1.textContent = `F1 ${fmt(s.target_f1)}`;
+    col.querySelectorAll(".col-foot .hot[data-metric]").forEach((el) => {
+      const digits = el.dataset.metric === "fp_per_frame" ? 2 : 3;
+      el.textContent = fmt(s[el.dataset.metric], digits);
+    });
+    // 重叠像素数跟帧走，之前只换了 IoU 与虚警，这一格会停在上一帧
+    const ov = col.querySelector(".col-foot .hot[data-overlap]");
+    if (ov) ov.textContent = String(side.overlap);
+  }
+  await Promise.all(jobs);
+  return true;
+}
+
+async function renderColumns() {
+  const filled = state.slots
+    .map((idx, slot) => ({ slot, idx }))
+    .filter((x) => x.idx >= 0 && state.results[x.idx]);
+
+  let data = null;
+  if (filled.length) {
+    try {
+      data = await fetchFrame(filled, state.index);
+    } catch (err) {
+      $("stageEmpty").classList.remove("hidden");
+      $("stageEmpty").textContent = err.message;
+      return;
+    }
+    state.count = data.count;
+    state.index = data.index;
+    frameLabel();
+  }
+
+  const bySlot = new Map();
+  if (data) filled.forEach((x, k) => bySlot.set(x.slot, data.sides[k]));
+  state.sides = [...bySlot.values()];
+  $("columns").classList.toggle("pixelated", $("dispPixelated").checked);
+
+  const sig = columnSig(filled);
+  const patched = sig === ui.colSig && (await patchColumns(bySlot, filled));
+  if (!patched) {
+    rebuildColumns(bySlot);
+    ui.colSig = sig;
+  }
 
   // 空槽位已收纳为紧凑的「+ 添加对比」侧条，仅在全部为空时显示底部提示以节省主舞台高度
   const hint = $("colHint");
@@ -606,6 +747,9 @@ async function renderColumns() {
   }
   renderPills(state.sides);
   renderMetricTable(state.sides);
+  markBestColumns(state.sides);
+  applyZoom();
+  prefetchNeighbors(filled);
 }
 
 function pillCard(label, value, delta, digits = 3) {
@@ -646,16 +790,56 @@ function renderPills(sides) {
   ].join("");
 }
 
+/* 并列第一全部高亮；全员打平则视为无最优，避免整行变绿 */
+function bestIndices(sides, key, better) {
+  if (sides.length < 2) return new Set();
+  const vals = sides.map((s) => (s && s.summary ? s.summary[key] : null));
+  const nums = vals.filter((v) => Number.isFinite(v));
+  if (nums.length < 2) return new Set();
+  const target = better === "down" ? Math.min(...nums) : Math.max(...nums);
+  const out = new Set();
+  vals.forEach((v, i) => { if (Number.isFinite(v) && Math.abs(v - target) < 1e-9) out.add(i); });
+  return out.size >= nums.length ? new Set() : out;
+}
+
+function bestMap(sides) {
+  // 10 行全部参与比较，不再只挑 F1 / IoU / 虚警三项
+  const map = new Map();
+  METRIC_ROWS.forEach((r) => map.set(r.key, bestIndices(sides, r.key, r.better)));
+  return map;
+}
+
+function markBestColumns(sides) {
+  document.querySelectorAll("#columns .col[data-side]").forEach((col) => {
+    col.querySelectorAll(".is-best").forEach((el) => el.classList.remove("is-best"));
+  });
+  if (sides.length < 2) return;
+  const map = bestMap(sides);
+  for (const [key, set] of map) {
+    if (!set.size) continue;
+    for (const i of set) {
+      const col = document.querySelector(`#columns .col[data-side="${i}"]`);
+      if (!col) continue;
+      const target = key === "target_f1"
+        ? col.querySelector(".col-head .f1")
+        : col.querySelector(`.col-foot .hot[data-metric="${key}"]`);
+      if (target) target.classList.add("is-best");
+    }
+  }
+}
+
 function renderMetricTable(sides) {
   if (!sides.some((s) => s.summary)) {
     $("metricTable").innerHTML = `<tr><td style="color:var(--on-3);">暂无指标</td></tr>`;
     return;
   }
   const base = sides[0]?.summary || {};
+  const best = bestMap(sides);
   const head = `<thead><tr><th>指标</th>${sides
     .map((s) => `<th>${esc(s.label)}</th>`)
     .join("")}</tr></thead>`;
   const body = METRIC_ROWS.map((row) => {
+    const winners = best.get(row.key);
     const cells = sides.map((side, i) => {
       const v = side.summary ? side.summary[row.key] : null;
       let delta = "";
@@ -671,7 +855,8 @@ function renderMetricTable(sides) {
           }
         }
       }
-      return `<td class="val">${fmt(v, row.digits)}${delta}</td>`;
+      const hot = winners && winners.has(i) ? " is-best" : "";
+      return `<td class="val${hot}">${fmt(v, row.digits)}${delta}</td>`;
     });
     return `<tr><td>${row.label}</td>${cells.join("")}</tr>`;
   }).join("");
@@ -768,9 +953,16 @@ async function renderStrip() {
   }
   const host = $("strip");
   host.classList.remove("hidden");
+  const statuses = Array.isArray(state.strip.frame_status) ? state.strip.frame_status : [];
+  const STATUS_TEXT = { ok: "命中", missed: "漏检", fp_high: "虚警偏高", unknown: "" };
   host.innerHTML = state.strip.thumbs
-    .map((src, i) => `<button data-frame="${i}" class="${i === state.index ? "on" : ""}" title="第 ${i + 1} 帧">
-        <img src="${src}" alt="" /><i>${i + 1}</i></button>`)
+    .map((src, i) => {
+      const st = statuses[i] || "";
+      const note = STATUS_TEXT[st] ? ` · ${STATUS_TEXT[st]}` : "";
+      const heat = st && st !== "unknown" ? `<span class="heat ${st}" aria-hidden="true"></span>` : "";
+      return `<button data-frame="${i}" class="${i === state.index ? "on" : ""}" title="第 ${i + 1} 帧${note}">
+        <img src="${src}" alt="" /><i>${i + 1}</i>${heat}</button>`;
+    })
     .join("");
   for (const btn of host.querySelectorAll("button")) {
     btn.addEventListener("click", () => gotoFrame(Number(btn.dataset.frame)));
@@ -796,6 +988,8 @@ function renderVideo() {
   ["columns", "quad", "quadBar", "pills", "strip", "stageEmpty", "colHint"].forEach((id) =>
     $(id).classList.add("hidden")
   );
+  const splitHost = $("splitStage");
+  if (splitHost) splitHost.classList.add("hidden");
   $("videoStage").classList.remove("hidden");
   const res = state.videoResult;
   if (!res) {
@@ -818,6 +1012,12 @@ function stopPlayback() {
   setPlayState(false);
 }
 
+function paintFrame() {
+  if (state.view === "quad") return renderQuad();
+  if (state.view === "split") return renderSplit();
+  return renderColumns();
+}
+
 function togglePlayback() {
   if (state.playing) { stopPlayback(); return; }
   if (state.count <= 1) return;
@@ -828,8 +1028,10 @@ function togglePlayback() {
     const t0 = performance.now();
     state.index = (state.index + 1) % state.count;
     try {
-      await (state.view === "quad" ? renderQuad() : renderColumns());
+      await paintFrame();
       markStrip();
+      // 灯箱开着时跟着换图，否则播放会在灯箱里定格
+      if (ui.lightbox.open) paintLightbox();
     } catch { stopPlayback(); return; }
     const interval = 1000 / Number($("fps").value || 8);
     state.timer = setTimeout(step, Math.max(0, interval - (performance.now() - t0)));
@@ -841,8 +1043,9 @@ async function gotoFrame(index) {
   stopPlayback();
   if (!state.count) return;
   state.index = Math.max(0, Math.min(state.count - 1, index));
-  await (state.view === "quad" ? renderQuad() : renderColumns());
+  await paintFrame();
   markStrip();
+  if (ui.lightbox.open) paintLightbox();
 }
 
 /* ------------------------------------------------------------ run */
@@ -970,6 +1173,9 @@ async function runDetection() {
       state.quadSlot = 0;
       state.index = 0;
       state.quadCache.clear();
+      // 重新跑检测会产出新的 predictions，旧帧缓存必须整段作废
+      colCache.clear();
+      ui.colSig = "";
       state.stripKey = "";
       await refreshMeta();
       await render();
@@ -1038,9 +1244,27 @@ const V2_METRIC_ROWS = [
 ];
 const V2_FROC_COLORS = ["#0b57d0", "#b3261e", "#146c2e", "#8b5cf6", "#9a5b00", "#00838f", "#c2185b", "#5f6368"];
 
+function isV2Mode() {
+  return Boolean(document.querySelector(".stage")?.classList.contains("v2-mode"));
+}
+
 function setV2Mode(on) {
-  document.querySelector(".stage")?.classList.toggle("v2-mode", Boolean(on));
-  $("v2Panel")?.classList.toggle("hidden", !on);
+  const active = Boolean(on);
+  if (active) stopPlayback();
+  document.querySelector(".stage")?.classList.toggle("v2-mode", active);
+  $("v2Panel")?.classList.toggle("hidden", !active);
+  if (!active) $("v2FrocTip")?.classList.add("hidden");
+}
+
+function exitV2Mode() {
+  state.v2.runId = "";
+  state.v2.data = null;
+  const sel = $("v2RunSelect");
+  if (sel) {
+    sel.value = "";
+    syncM3Select(sel);
+  }
+  setV2Mode(false);
 }
 
 function v2ModeChanged() {
@@ -1117,11 +1341,13 @@ function renderV2Partition(bodyId, countId, domain, summary, data) {
 function renderFroc(points) {
   const svg = $("v2Froc");
   const legend = $("v2FrocLegend");
+  const tip = $("v2FrocTip");
   if (!svg || !legend) return;
   svg.innerHTML = "";
   legend.innerHTML = "";
+  if (tip) tip.classList.add("hidden");
   if (!points.length) {
-    svg.innerHTML = '<text x="360" y="150" text-anchor="middle" font-size="13" fill="#747775">本次运行无 FROC 曲线数据</text>';
+    svg.innerHTML = '<text x="360" y="150" text-anchor="middle" font-size="13" fill="var(--on-3)">本次运行无 FROC 曲线数据</text>';
     return;
   }
   const groups = new Map();
@@ -1138,28 +1364,60 @@ function renderFroc(points) {
   const parts = [];
   for (let i = 0; i <= 4; i++) {
     const gy = top + (ph * i) / 4;
-    parts.push(`<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="#e1e5ec" stroke-width="1"/>`);
-    parts.push(`<text x="${left - 8}" y="${gy + 4}" text-anchor="end" font-size="11" fill="#747775">${(1 - i / 4).toFixed(2)}</text>`);
+    parts.push(`<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="var(--outline)" stroke-width="1"/>`);
+    parts.push(`<text x="${left - 8}" y="${gy + 4}" text-anchor="end" font-size="11" fill="var(--on-3)">${(1 - i / 4).toFixed(2)}</text>`);
   }
   for (let i = 0; i <= 5; i++) {
     const gx = left + (pw * i) / 5;
-    parts.push(`<line x1="${gx}" y1="${top}" x2="${gx}" y2="${top + ph}" stroke="#e1e5ec" stroke-width="1"/>`);
-    parts.push(`<text x="${gx}" y="${top + ph + 18}" text-anchor="middle" font-size="11" fill="#747775">${((maxFa * i) / 5).toFixed(2)}</text>`);
+    parts.push(`<line x1="${gx}" y1="${top}" x2="${gx}" y2="${top + ph}" stroke="var(--outline)" stroke-width="1"/>`);
+    parts.push(`<text x="${gx}" y="${top + ph + 18}" text-anchor="middle" font-size="11" fill="var(--on-3)">${((maxFa * i) / 5).toFixed(2)}</text>`);
   }
-  parts.push(`<line x1="${left}" y1="${top + ph}" x2="${width - right}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
-  parts.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
-  parts.push(`<text x="${left + pw / 2}" y="${height - 6}" text-anchor="middle" font-size="11" fill="#444746">FA / frame</text>`);
-  parts.push(`<text x="14" y="${top + ph / 2}" text-anchor="middle" font-size="11" fill="#444746" transform="rotate(-90 14 ${top + ph / 2})">Recall</text>`);
+  // 1.0 FA 参考虚线（呼应指标表中的 Recall@1FA）
+  if (maxFa >= 1) {
+    const x1 = px(1);
+    parts.push(`<line x1="${x1.toFixed(2)}" y1="${top}" x2="${x1.toFixed(2)}" y2="${top + ph}" stroke="var(--cta)" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4"/>`);
+    parts.push(`<text x="${Math.min(x1 + 4, width - right - 38).toFixed(2)}" y="${top + 12}" font-size="10.5" fill="var(--cta)" opacity="0.8">1.0 FA</text>`);
+  }
+  parts.push(`<line x1="${left}" y1="${top + ph}" x2="${width - right}" y2="${top + ph}" stroke="var(--outline-2)" stroke-width="1"/>`);
+  parts.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${top + ph}" stroke="var(--outline-2)" stroke-width="1"/>`);
+  parts.push(`<text x="${left + pw / 2}" y="${height - 6}" text-anchor="middle" font-size="11" fill="var(--on-2)">FA / frame</text>`);
+  parts.push(`<text x="14" y="${top + ph / 2}" text-anchor="middle" font-size="11" fill="var(--on-2)" transform="rotate(-90 14 ${top + ph / 2})">Recall</text>`);
   let colorIndex = 0;
   for (const group of groups.values()) {
     const color = V2_FROC_COLORS[colorIndex % V2_FROC_COLORS.length];
     const ordered = [...group.pts].sort((a, b) => (Number(a.fa_per_frame) || 0) - (Number(b.fa_per_frame) || 0));
     const d = ordered.map((p, i) => `${i ? "L" : "M"}${px(p.fa_per_frame).toFixed(2)},${py(p.recall).toFixed(2)}`).join(" ");
     parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`);
+    // 适度采样可悬停节点，避免点数过多时重叠拥挤
+    const stride = Math.max(1, Math.ceil(ordered.length / 40));
+    ordered.forEach((p, idx) => {
+      if (idx % stride !== 0 && idx !== ordered.length - 1) return;
+      const cx = px(p.fa_per_frame).toFixed(2);
+      const cy = py(p.recall).toFixed(2);
+      const faText = fmt(Number(p.fa_per_frame), 3);
+      const rcText = fmt(Number(p.recall), 3);
+      const label = esc(`${group.split} · ${group.domain}`);
+      parts.push(`<circle class="froc-pt" cx="${cx}" cy="${cy}" r="3.2" fill="${color}" stroke="var(--surface-white)" stroke-width="1.2" data-label="${label}" data-fa="${faText}" data-recall="${rcText}"><title>${label} | FA/frame ${faText} | Recall ${rcText}</title></circle>`);
+    });
     legend.insertAdjacentHTML("beforeend", `<span class="lg"><span class="sw" style="background:${color}"></span>${esc(`${group.split} · ${group.domain}`)}</span>`);
     colorIndex++;
   }
   svg.innerHTML = parts.join("");
+
+  if (tip) {
+    const wrap = svg.parentElement;
+    svg.querySelectorAll(".froc-pt").forEach((pt) => {
+      pt.addEventListener("mouseenter", () => {
+        const wRect = wrap.getBoundingClientRect();
+        const pRect = pt.getBoundingClientRect();
+        tip.innerHTML = `<b>${pt.dataset.label}</b><br/>FA/frame: ${pt.dataset.fa} · Recall: ${pt.dataset.recall}`;
+        tip.style.left = `${Math.round(pRect.left - wRect.left + pRect.width / 2)}px`;
+        tip.style.top = `${Math.round(pRect.top - wRect.top)}px`;
+        tip.classList.remove("hidden");
+      });
+      pt.addEventListener("mouseleave", () => tip.classList.add("hidden"));
+    });
+  }
 }
 
 async function runV2Benchmark() {
@@ -1272,9 +1530,778 @@ function canvasPoint(ev) {
   };
 }
 
+/* ============================================================ 交互升级 T01–T12 */
+/* 约束：不改任何既有 DOM id 与后端路由；--viz-* 三种 SAR 配色一律不动。 */
+
+const PREFS_KEY = "videosar_ui_prefs_v1";
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 12;
+
+const ui = {
+  zoom: { s: 1, tx: 0, ty: 0 },
+  panning: false,
+  panStart: null,
+  colSig: "",
+  peekPrev: null,
+  lightbox: { open: false, idx: 0 },
+  theme: "light",
+  split: 0.5,
+  stripDrag: false,
+};
+
+const ICON_SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.6v2.4M12 19v2.4M2.6 12h2.4M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"></path></svg>';
+const ICON_MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"></path></svg>';
+
+/* ---------------------------------------------------------- 偏好持久化 (T04/T05) */
+function readPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") || {}; } catch { return {}; }
+}
+
+function writePrefs(patch) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ ...readPrefs(), ...patch })); } catch { /* 隐私模式下静默降级 */ }
+}
+
+const PREF_FIELDS = ["dispMode", "dispCmap", "dispDiff", "dispDenoise", "dispTruth", "dispPred", "dispPixelated"];
+
+function savePrefs() {
+  const out = { fps: $("fps").value };
+  PREF_FIELDS.forEach((id) => { out[id] = $(id).type === "checkbox" ? $(id).checked : $(id).value; });
+  writePrefs(out);
+}
+
+function applyPrefs() {
+  const p = readPrefs();
+  PREF_FIELDS.forEach((id) => {
+    if (p[id] === undefined) return;
+    const el = $(id);
+    if (el.type === "checkbox") el.checked = Boolean(p[id]);
+    else if ([...el.options].some((o) => o.value === p[id])) el.value = p[id];
+  });
+  if (p.fps && [...$("fps").options].some((o) => o.value === p.fps)) $("fps").value = p.fps;
+  syncM3Select($("dispMode"));
+  syncM3Select($("dispCmap"));
+  syncM3Select($("dispDiff"));
+  syncM3Select($("fps"));
+  $("columns").classList.toggle("pixelated", $("dispPixelated").checked);
+  $("quad").classList.toggle("pixelated", $("dispPixelated").checked);
+  setRailCollapsed(Boolean(p.railCollapsed), false);
+  applyTheme(p.theme === "dark" ? "dark" : "light", false);
+  syncModelChip();
+}
+
+/* ---------------------------------------------------------- T04 左侧栏收折 */
+function setRailCollapsed(on, persist = true) {
+  const app = document.querySelector(".app");
+  if (!app) return;
+  app.classList.toggle("rail-collapsed", Boolean(on));
+  const btn = $("btnRailToggle");
+  if (btn) btn.setAttribute("aria-expanded", String(!on));
+  if (persist) writePrefs({ railCollapsed: Boolean(on) });
+}
+
+function toggleRail() {
+  const app = document.querySelector(".app");
+  setRailCollapsed(!app.classList.contains("rail-collapsed"));
+}
+
+/* ---------------------------------------------------------- T05 暗房模式 */
+function applyTheme(theme, persist = true) {
+  ui.theme = theme === "dark" ? "dark" : "light";
+  if (ui.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+  const icon = $("themeIcon");
+  if (icon) icon.innerHTML = ui.theme === "dark" ? ICON_SUN : ICON_MOON;
+  const btn = $("btnTheme");
+  if (btn) btn.title = ui.theme === "dark" ? "切换到浅色模式 (T)" : "切换暗房模式 (T)";
+  if (persist) writePrefs({ theme: ui.theme });
+  // 分段控制器滑块是按像素测量的，主题切换后要重测
+  requestAnimationFrame(syncSegIndicators);
+}
+
+function toggleTheme() {
+  applyTheme(ui.theme === "dark" ? "light" : "dark");
+}
+
+/* ---------------------------------------------------------- T09 分段滑块 */
+function syncSegIndicator(seg) {
+  if (!seg) return;
+  const on = seg.querySelector("button.on");
+  const ind = seg.querySelector(".seg-indicator");
+  if (!on || !ind) return;
+  seg.classList.add("has-indicator");
+  ind.style.left = `${on.offsetLeft}px`;
+  ind.style.width = `${on.offsetWidth}px`;
+}
+
+function syncSegIndicators() {
+  document.querySelectorAll(".seg").forEach(syncSegIndicator);
+}
+
+function installSegIndicators() {
+  document.querySelectorAll(".seg").forEach((seg) => {
+    if (!seg.querySelector(".seg-indicator")) {
+      const ind = document.createElement("span");
+      ind.className = "seg-indicator";
+      ind.setAttribute("aria-hidden", "true");
+      seg.insertBefore(ind, seg.firstChild);
+    }
+    seg.addEventListener("click", () => requestAnimationFrame(() => syncSegIndicator(seg)));
+  });
+  syncSegIndicators();
+}
+
+/* ---------------------------------------------------------- T01 同步缩放 */
+function zoomTransform() {
+  const { s, tx, ty } = ui.zoom;
+  return `translate(${(tx * 100).toFixed(4)}%, ${(ty * 100).toFixed(4)}%) scale(${s.toFixed(4)})`;
+}
+
+function applyZoom() {
+  const cols = $("columns");
+  if (!cols) return;
+  const t = zoomTransform();
+  cols.querySelectorAll(".col-img img").forEach((img) => { img.style.transform = t; });
+  const label = `${ui.zoom.s.toFixed(1)}×`;
+  cols.querySelectorAll(".zoom-badge").forEach((b) => {
+    b.textContent = label;
+    b.classList.toggle("show", ui.zoom.s > 1.001);
+  });
+}
+
+function clampPan() {
+  const half = Math.max(0, (ui.zoom.s - 1) / 2);
+  ui.zoom.tx = Math.max(-half, Math.min(half, ui.zoom.tx));
+  ui.zoom.ty = Math.max(-half, Math.min(half, ui.zoom.ty));
+}
+
+/* 以鼠标所在点为不动点缩放。位移用百分比，各列宽度不同也能对齐同一处。 */
+function setZoom(nextScale, fx, fy) {
+  const s0 = ui.zoom.s;
+  const s1 = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, nextScale));
+  if (Math.abs(s1 - s0) < 1e-6) return;
+  ui.zoom.tx += (fx - 0.5) * (s0 - s1);
+  ui.zoom.ty += (fy - 0.5) * (s0 - s1);
+  ui.zoom.s = s1;
+  if (s1 <= ZOOM_MIN + 1e-4) {
+    ui.zoom.tx = 0;
+    ui.zoom.ty = 0;
+  }
+  clampPan();
+  applyZoom();
+}
+
+function resetZoom() {
+  ui.zoom = { s: 1, tx: 0, ty: 0 };
+  applyZoom();
+}
+
+function onColumnsWheel(ev) {
+  if (state.view !== "compare" || !state.results.length) return;
+  const box = ev.target.closest(".col-img");
+  if (!box) return;
+  ev.preventDefault();
+  const r = box.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const fx = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+  const fy = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+  const cols = $("columns");
+  cols.classList.add("zooming");
+  setZoom(ui.zoom.s * Math.exp(-ev.deltaY * 0.0016), fx, fy);
+  clearTimeout(onColumnsWheel._timer);
+  onColumnsWheel._timer = setTimeout(() => cols.classList.remove("zooming"), 140);
+}
+
+function onColumnsPointerDown(ev) {
+  if (state.view !== "compare") return;
+  if (ui.zoom.s <= ZOOM_MIN + 1e-3 || ev.button !== 0) return;
+  const box = ev.target.closest(".col-img");
+  if (!box) return;
+  const r = box.getBoundingClientRect();
+  ui.panning = true;
+  ui.panStart = { x: ev.clientX, y: ev.clientY, tx: ui.zoom.tx, ty: ui.zoom.ty, w: r.width, h: r.height };
+  box.classList.add("panning");
+  try { box.setPointerCapture(ev.pointerId); } catch { /* 某些浏览器不支持 */ }
+  $("columns").classList.add("zooming");
+  ev.preventDefault();
+}
+
+function syncCrosshair(ev) {
+  const cols = $("columns");
+  if (!cols || cols.classList.contains("hidden")) return;
+  const boxes = cols.querySelectorAll(".col-img");
+  const box = ev.target.closest ? ev.target.closest(".col-img") : null;
+  if (!box) {
+    boxes.forEach((b) => b.classList.remove("crosshair-on"));
+    return;
+  }
+  const r = box.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const fx = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+  const fy = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+  boxes.forEach((b) => {
+    b.classList.add("crosshair-on");
+    const h = b.querySelector(".xhair-h");
+    const v = b.querySelector(".xhair-v");
+    if (h) h.style.top = `${(fy * 100).toFixed(3)}%`;
+    if (v) v.style.left = `${(fx * 100).toFixed(3)}%`;
+  });
+}
+
+function onColumnsPointerMove(ev) {
+  if (!ui.panning || !ui.panStart) {
+    syncCrosshair(ev);
+    return;
+  }
+  const st = ui.panStart;
+  if (!st.w || !st.h) return;
+  ui.zoom.tx = st.tx + (ev.clientX - st.x) / st.w;
+  ui.zoom.ty = st.ty + (ev.clientY - st.y) / st.h;
+  clampPan();
+  applyZoom();
+}
+
+function onColumnsPointerUp() {
+  if (!ui.panning) return;
+  ui.panning = false;
+  ui.panStart = null;
+  document.querySelectorAll("#columns .col-img.panning").forEach((b) => b.classList.remove("panning"));
+  $("columns").classList.remove("zooming");
+}
+
+function clearCrosshair() {
+  document.querySelectorAll("#columns .col-img.crosshair-on").forEach((b) => b.classList.remove("crosshair-on"));
+}
+
+/* ---------------------------------------------------------- T03 原图预览 + 灯箱 */
+function peekBadge(show) {
+  let el = $("peekBadge");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "peekBadge";
+    el.className = "peek-badge hidden";
+    el.style.top = "58px";
+    el.textContent = "原图预览中";
+    (document.querySelector(".stage") || document.body).appendChild(el);
+  }
+  el.classList.toggle("hidden", !show);
+}
+
+async function setPeek(on) {
+  const truth = $("dispTruth");
+  const pred = $("dispPred");
+  if (!truth || !pred) return;
+  if (on) {
+    if (ui.peekPrev) return;
+    ui.peekPrev = { truth: truth.checked, pred: pred.checked };
+    if (!truth.checked && !pred.checked) return;   // 已经只看原图
+    truth.checked = false;
+    pred.checked = false;
+    peekBadge(true);
+  } else {
+    if (!ui.peekPrev) { peekBadge(false); return; }
+    truth.checked = ui.peekPrev.truth;
+    pred.checked = ui.peekPrev.pred;
+    ui.peekPrev = null;
+    peekBadge(false);
+  }
+  if (!state.results.length) return;
+  if (state.view === "split") await renderSplit();
+  else await render();
+}
+
+function lightboxSides() {
+  return state.sides.filter((s) => s && s.image);
+}
+
+function renderLightboxBar() {
+  const bar = $("lightboxBar");
+  const sides = lightboxSides();
+  bar.innerHTML = sides
+    .map((s, i) => `<button class="lightbox-pill${i === ui.lightbox.idx ? " on" : ""}" data-lb="${i}" type="button">${i + 1} · ${esc(s.label)}</button>`)
+    .join("") + `<button class="lightbox-pill" data-lb-close="1" type="button">关闭 Esc</button>`;
+  bar.querySelectorAll("[data-lb]").forEach((b) => {
+    b.addEventListener("click", () => {
+      ui.lightbox.idx = Number(b.dataset.lb);
+      renderLightboxBar();
+      paintLightbox();
+    });
+  });
+  const closer = bar.querySelector("[data-lb-close]");
+  if (closer) closer.addEventListener("click", closeLightbox);
+}
+
+function paintLightbox() {
+  const sides = lightboxSides();
+  const cur = sides[ui.lightbox.idx];
+  if (!cur) return;
+  $("lightboxImg").src = cur.image;
+  $("lightboxImg").alt = cur.label;
+  $("lightboxCap").textContent = `${cur.label} · 帧 ${state.index + 1} / ${state.count}`;
+}
+
+function openLightbox(idx = 0) {
+  const sides = lightboxSides();
+  if (!sides.length) return;
+  ui.lightbox.open = true;
+  ui.lightbox.idx = Math.max(0, Math.min(sides.length - 1, idx));
+  $("lightbox").classList.remove("hidden");
+  renderLightboxBar();
+  paintLightbox();
+}
+
+function closeLightbox() {
+  if (!ui.lightbox.open) return;
+  ui.lightbox.open = false;
+  $("lightbox").classList.add("hidden");
+}
+
+/* ---------------------------------------------------------- T07 快捷键 */
+function toggleKbdHelp(force) {
+  const box = $("kbdHelp");
+  const show = force === undefined ? box.classList.contains("hidden") : force;
+  box.classList.toggle("hidden", !show);
+}
+
+function typingTarget() {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  return ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+}
+
+function onGlobalKeydown(ev) {
+  const key = ev.key;
+
+  if (key === "Escape") {
+    if (ui.lightbox.open) { ev.preventDefault(); closeLightbox(); return; }
+    if (!$("kbdHelp").classList.contains("hidden")) { ev.preventDefault(); toggleKbdHelp(false); return; }
+    return;
+  }
+  if (typingTarget()) return;
+  if (!$("metricSheet").classList.contains("hidden")) return;
+
+  if (key === "?") { ev.preventDefault(); toggleKbdHelp(); return; }
+  // v2 看板里不响应播放/步进/灯箱等影像键（速查卡除外）
+  if (isV2Mode()) return;
+  if (key === "h" || key === "H") { if (!ev.repeat) setPeek(true); return; }
+  if (key === "t" || key === "T") { ev.preventDefault(); toggleTheme(); return; }
+  if (key === "[") { ev.preventDefault(); toggleRail(); return; }
+  if (key === "0") { ev.preventDefault(); resetZoom(); return; }
+  if (key === "f" || key === "F") {
+    ev.preventDefault();
+    if (ui.lightbox.open) closeLightbox();
+    else openLightbox(0);
+    return;
+  }
+  if (["1", "2", "3"].includes(key)) {
+    const idx = Number(key) - 1;
+    if (idx < lightboxSides().length) { ev.preventDefault(); openLightbox(idx); }
+    return;
+  }
+
+  if (!state.results.length || state.view === "video") return;
+
+  if (key === ",") { ev.preventDefault(); gotoFrame(state.index - 1); return; }
+  if (key === ".") { ev.preventDefault(); gotoFrame(state.index + 1); return; }
+  if (key === "j" || key === "J") { ev.preventDefault(); gotoFrame(state.index - 1); return; }
+  if (key === "l" || key === "L") { ev.preventDefault(); gotoFrame(state.index + 1); return; }
+  if (key === "k" || key === "K") { ev.preventDefault(); togglePlayback(); return; }
+  if (key === "Home") { ev.preventDefault(); gotoFrame(0); return; }
+  if (key === "End") { ev.preventDefault(); gotoFrame(state.count - 1); return; }
+}
+
+function onGlobalKeyup(ev) {
+  if (ev.key === "h" || ev.key === "H") setPeek(false);
+}
+
+/* ---------------------------------------------------------- T07 胶片条拖拽擦洗 */
+function bindStripScrub() {
+  const strip = $("strip");
+  if (!strip) return;
+  const frameUnder = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    const btn = el && el.closest ? el.closest("button[data-frame]") : null;
+    return btn ? Number(btn.dataset.frame) : null;
+  };
+  strip.addEventListener("pointerdown", (ev) => {
+    const btn = ev.target.closest && ev.target.closest("button[data-frame]");
+    if (!btn) return;
+    ui.stripDrag = true;
+    try { strip.setPointerCapture(ev.pointerId); } catch { /* noop */ }
+    stopPlayback();
+    gotoFrame(Number(btn.dataset.frame));
+    ev.preventDefault();
+  });
+  strip.addEventListener("pointermove", (ev) => {
+    if (!ui.stripDrag) return;
+    const f = frameUnder(ev.clientX, ev.clientY);
+    if (f !== null && f !== state.index) gotoFrame(f);
+  });
+  const stop = () => { ui.stripDrag = false; };
+  strip.addEventListener("pointerup", stop);
+  strip.addEventListener("pointercancel", stop);
+  window.addEventListener("pointerup", stop);
+}
+
+/* ---------------------------------------------------------- T08 复制与出图 */
+function flashCopied(btn) {
+  if (!btn) return;
+  const old = btn.textContent;
+  btn.classList.add("copied");
+  btn.textContent = "已复制 ✓";
+  clearTimeout(btn._copyTimer);
+  btn._copyTimer = setTimeout(() => {
+    btn.classList.remove("copied");
+    btn.textContent = old;
+  }, 1400);
+}
+
+function copyText(text, btn) {
+  const done = () => flashCopied(btn);
+  const fallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch { /* noop */ }
+    ta.remove();
+    done();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+
+function sidesForExport() {
+  return state.sides.filter((s) => s && s.summary);
+}
+
+function metricsMarkdown() {
+  const sides = state.sides;
+  if (!sides.length) return "";
+  const head = `| 指标 | ${sides.map((s) => s.label).join(" | ")} |`;
+  const sep = `| --- | ${sides.map(() => "---:").join(" | ")} |`;
+  const body = METRIC_ROWS
+    .map((r) => `| ${r.label} | ${sides.map((s) => fmt(s.summary ? s.summary[r.key] : null, r.digits)).join(" | ")} |`)
+    .join("\n");
+  return `${head}\n${sep}\n${body}`;
+}
+
+function metricsCsv() {
+  const sides = state.sides;
+  const quote = (v) => {
+    const t = String(v ?? "");
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const lines = [["metric", ...sides.map((s) => quote(s.label))].join(",")];
+  METRIC_ROWS.forEach((r) => {
+    const cells = sides.map((s) => {
+      const v = s.summary ? s.summary[r.key] : null;
+      return Number.isFinite(v) ? v : "";
+    });
+    lines.push([quote(r.key), ...cells].join(","));
+  });
+  return lines.join("\n");
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("图片无法解码"));
+    img.src = src;
+  });
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+async function exportComparePng() {
+  const sides = state.sides.filter((s) => s && s.image);
+  if (!sides.length) return;
+  const btn = $("btnExportPng");
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "渲染中…";
+  try {
+    const imgs = await Promise.all(sides.map((s) => loadImage(s.image)));
+    const pad = 26, gap = 18, titleH = 52, labelH = 30, metaH = 30;
+    const cellW = Math.max(...imgs.map((i) => i.naturalWidth));
+    const cellH = Math.max(...imgs.map((i) => i.naturalHeight));
+    const w = pad * 2 + cellW * imgs.length + gap * (imgs.length - 1);
+    const h = pad * 2 + titleH + labelH + cellH + metaH;
+    const ratio = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(w * ratio);
+    cv.height = Math.round(h * ratio);
+    const g = cv.getContext("2d");
+    g.scale(ratio, ratio);
+
+    // 固定深底浅字：导出图不随主题变化，放进论文/PPT 都稳定
+    g.fillStyle = "#0f1216";
+    g.fillRect(0, 0, w, h);
+
+    const seqName = (state.seq || "").split(/[\\/]/).filter(Boolean).pop() || "序列";
+    g.fillStyle = "#eef1f5";
+    g.font = "600 17px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif";
+    g.textBaseline = "top";
+    g.fillText(`${seqName} · 帧 ${state.index + 1} / ${state.count}`, pad, pad);
+    g.fillStyle = "#9aa3ad";
+    g.font = "12px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif";
+    g.fillText(`Ka 视频 SAR 阴影对比 · ${new Date().toLocaleString("zh-CN")}`, pad, pad + 24);
+
+    // 图例：真值绿 / 预测红，与界面里的 --viz-* 完全一致
+    const legend = [["真值轮廓", "#40eb78"], ["预测轮廓", "#ff5c5c"]];
+    let lx = w - pad;
+    g.font = "12px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif";
+    [...legend].reverse().forEach(([text, color]) => {
+      const tw = g.measureText(text).width;
+      g.fillStyle = "#cfd5dc";
+      g.fillText(text, lx - tw, pad + 6);
+      lx -= tw + 8;
+      g.fillStyle = color;
+      g.fillRect(lx - 9, pad + 8, 9, 9);
+      lx -= 22;
+    });
+
+    const top = pad + titleH;
+    imgs.forEach((img, i) => {
+      const x = pad + i * (cellW + gap);
+      g.fillStyle = "#0b0d10";
+      g.fillRect(x, top, cellW, cellH);
+      const scale = Math.min(cellW / img.naturalWidth, cellH / img.naturalHeight);
+      const dw = img.naturalWidth * scale;
+      const dh = img.naturalHeight * scale;
+      g.drawImage(img, x + (cellW - dw) / 2, top + (cellH - dh) / 2, dw, dh);
+
+      const s = sides[i].summary || {};
+      g.fillStyle = "#eef1f5";
+      g.font = "600 13px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif";
+      g.fillText(`${i + 1} · ${sides[i].label}`, x, top - labelH + 8);
+      g.fillStyle = "#9aa3ad";
+      g.font = "12px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif";
+      const line = `F1 ${fmt(s.target_f1)} · IoU ${fmt(s.iou)} · 虚警/帧 ${fmt(s.fp_per_frame, 2)}`;
+      g.fillText(line, x, top + cellH + 8);
+    });
+
+    const blob = await new Promise((resolve) => cv.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("PNG 生成失败");
+    saveBlob(blob, `sar-compare-${state.index + 1}.png`);
+  } catch (err) {
+    btn.textContent = "导出失败";
+    setTimeout(() => { btn.textContent = old; }, 1600);
+    return;
+  } finally {
+    btn.disabled = false;
+  }
+  btn.textContent = old;
+}
+
+/* ---------------------------------------------------------- T10 模型路径芯片 */
+function syncModelChip() {
+  const chip = $("modelChip");
+  const name = $("modelChipName");
+  if (!chip || !name) return;
+  const full = $("modelPath").value.trim();
+  const base = full ? full.split(/[\\/]/).filter(Boolean).pop() : "";
+  name.textContent = base || "默认权重";
+  name.classList.toggle("pc-empty", !base);
+  chip.title = full || "留空用默认权重";
+}
+
+function expandModelField() {
+  const input = $("modelPath");
+  $("modelChip").classList.add("hidden");
+  input.classList.remove("hidden");
+  input.focus();
+  input.select();
+}
+
+function collapseModelField() {
+  const input = $("modelPath");
+  if (input.classList.contains("hidden")) return;
+  input.classList.add("hidden");
+  $("modelChip").classList.remove("hidden");
+  syncModelChip();
+}
+
+/* ---------------------------------------------------------- T11 卷帘对比 */
+function ensureSplitStage() {
+  let host = $("splitStage");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "splitStage";
+    host.className = "split-stage hidden";
+    host.style.margin = "0 0 10px";
+    const anchor = $("colHint");
+    anchor.parentNode.insertBefore(host, anchor);
+  }
+  return host;
+}
+
+function bindSplitDrag(host) {
+  const divider = host.querySelector(".split-divider");
+  if (!divider) return;
+  const apply = () => host.style.setProperty("--split", `${(ui.split * 100).toFixed(2)}%`);
+  const setFromX = (cx) => {
+    const r = host.getBoundingClientRect();
+    if (!r.width) return;
+    ui.split = Math.max(0.02, Math.min(0.98, (cx - r.left) / r.width));
+    apply();
+  };
+  divider.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    try { divider.setPointerCapture(ev.pointerId); } catch { /* noop */ }
+    const move = (e) => setFromX(e.clientX);
+    const up = (e) => {
+      divider.removeEventListener("pointermove", move);
+      divider.removeEventListener("pointerup", up);
+      try { divider.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    };
+    divider.addEventListener("pointermove", move);
+    divider.addEventListener("pointerup", up);
+  });
+  divider.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    ev.preventDefault();
+    ui.split = Math.max(0.02, Math.min(0.98, ui.split + (ev.key === "ArrowLeft" ? -0.02 : 0.02)));
+    apply();
+  });
+}
+
+async function renderSplit() {
+  const filled = state.slots
+    .map((idx, slot) => ({ slot, idx }))
+    .filter((x) => x.idx >= 0 && state.results[x.idx]);
+  const host = ensureSplitStage();
+  host.classList.remove("hidden");
+
+  if (!filled.length) {
+    host.innerHTML = `<span class="lbl" style="color:#9aa3ad;">先在左侧勾选结果，再切到卷帘对比。</span>`;
+    return;
+  }
+  let data;
+  try {
+    data = await fetchFrame(filled, state.index);
+  } catch (err) {
+    host.innerHTML = `<span class="lbl" style="color:#ff8a80;">${esc(err.message)}</span>`;
+    return;
+  }
+  state.count = data.count;
+  state.index = data.index;
+  frameLabel();
+  state.sides = data.sides;
+
+  const top = data.sides[0];
+  const bottom = data.sides[1] || data.sides[0];
+  const rightTag = data.sides.length > 1 ? bottom.label : "仅 1 个结果 · 左右相同";
+  host.innerHTML = `
+    <img class="split-top" src="${top.image}" alt="${esc(top.label)}" draggable="false" />
+    <img class="split-bottom" src="${bottom.image}" alt="${esc(bottom.label)}" draggable="false" />
+    <span class="split-tag left">${esc(top.label)}</span>
+    <span class="split-tag right">${esc(rightTag)}</span>
+    <div class="split-divider" role="separator" aria-orientation="vertical" aria-label="卷帘分隔线（可拖动，方向键微调）" tabindex="0"></div>`;
+  host.style.setProperty("--split", `${(ui.split * 100).toFixed(2)}%`);
+  // 卷帘视图也要跟随「像素锐化缩放」，否则和并排视图观感不一致
+  host.classList.toggle("pixelated", $("dispPixelated").checked);
+  bindSplitDrag(host);
+  renderPills(state.sides);
+  renderMetricTable(state.sides);
+  prefetchNeighbors(filled);
+}
+
+/* ---------------------------------------------------------- 统一挂载 */
+function bindUpgrades() {
+  installSegIndicators();
+
+  $("btnRailToggle").addEventListener("click", toggleRail);
+  $("btnRailOpen").addEventListener("click", toggleRail);
+  $("btnTheme").addEventListener("click", toggleTheme);
+
+  const modelInput = $("modelPath");
+  $("modelChip").addEventListener("click", expandModelField);
+  modelInput.addEventListener("focusout", collapseModelField);
+  // 有些环境（无焦点窗口、iframe）不会派发 blur/focusout，点别处兜底收起
+  document.addEventListener("pointerdown", (ev) => {
+    if (!ev.target.closest || !ev.target.closest("#modelField")) collapseModelField();
+  });
+  modelInput.addEventListener("change", syncModelChip);
+  modelInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); collapseModelField(); }
+    if (ev.key === "Escape") { ev.preventDefault(); collapseModelField(); }
+  });
+
+  const cols = $("columns");
+  cols.addEventListener("wheel", onColumnsWheel, { passive: false });
+  cols.addEventListener("pointerdown", onColumnsPointerDown);
+  cols.addEventListener("pointermove", onColumnsPointerMove);
+  cols.addEventListener("pointerup", onColumnsPointerUp);
+  cols.addEventListener("pointercancel", onColumnsPointerUp);
+  cols.addEventListener("pointerleave", (ev) => {
+    onColumnsPointerUp();
+    if (!ev.relatedTarget || !cols.contains(ev.relatedTarget)) clearCrosshair();
+  });
+  cols.addEventListener("dblclick", (ev) => {
+    if (ev.target.closest(".col-img")) { ev.preventDefault(); resetZoom(); }
+  });
+  cols.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-zoom-side]");
+    if (!btn) return;
+    ev.stopPropagation();
+    openLightbox(Number(btn.dataset.zoomSide));
+  });
+
+  $("lightbox").addEventListener("click", (ev) => {
+    if (ev.target === $("lightbox")) closeLightbox();
+  });
+  $("kbdHelp").addEventListener("click", (ev) => {
+    if (ev.target === $("kbdHelp")) toggleKbdHelp(false);
+  });
+
+  $("btnExportPng").addEventListener("click", exportComparePng);
+  $("btnCopyMd").addEventListener("click", () => {
+    if (!state.sides.length) return;
+    copyText(metricsMarkdown(), $("btnCopyMd"));
+  });
+  $("btnCopyCsv").addEventListener("click", () => {
+    if (!state.sides.length) return;
+    copyText(metricsCsv(), $("btnCopyCsv"));
+  });
+
+  ["fps", ...PREF_FIELDS].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener("change", savePrefs);
+  });
+
+  bindStripScrub();
+
+  window.addEventListener("keydown", onGlobalKeydown);
+  window.addEventListener("keyup", onGlobalKeyup);
+  window.addEventListener("blur", () => {
+    if (ui.peekPrev) setPeek(false);
+  });
+  window.addEventListener("resize", () => {
+    syncSegIndicators();
+    applyZoom();
+  });
+}
+
 /* ------------------------------------------------------------ events */
 function bind() {
   upgradeAllSelects(document);
+  bindUpgrades();
 
   $("kindSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-kind]");
@@ -1409,6 +2436,7 @@ function bind() {
   $("v2RunSelect").addEventListener("change", (e) =>
     loadV2Run(e.target.value).catch((err) => setBadge($("runBadge"), err.message, "err")));
   $("btnV2Run").addEventListener("click", runV2Benchmark);
+  $("btnV2Back")?.addEventListener("click", exitV2Mode);
   $("btnRawLog").addEventListener("click", (ev) => {
     ev.stopPropagation();
     $("logWrap").classList.remove("collapsed");
@@ -1471,6 +2499,7 @@ function bind() {
     const on = $("dispPixelated").checked;
     $("columns").classList.toggle("pixelated", on);
     $("quad").classList.toggle("pixelated", on);
+    $("splitStage")?.classList.toggle("pixelated", on);
   });
 
   $("btnAllMetrics").addEventListener("click", () => {
@@ -1498,7 +2527,8 @@ function bind() {
         return;
       }
     }
-    // 弹层是模态的：开着时不允许空格/方向键改背后的帧
+    // v2.0 评测看板与模态弹层打开时，不允许空格/方向键在后台切换影像帧
+    if (isV2Mode()) return;
     if (!$("metricSheet").classList.contains("hidden")) return;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
     // 焦点在按钮上时，空格是原生激活，不能被劫持成播放
@@ -1540,7 +2570,13 @@ function bind() {
 }
 
 bind();
-boot().catch((err) => {
-  const el = $("stageEmpty");
-  if (el) { el.classList.remove("hidden"); el.textContent = `初始化失败：${err.message}`; }
-});
+boot()
+  .then(() => {
+    // 偏好项依赖 boot() 灌好的下拉选项，必须等它完成再还原
+    applyPrefs();
+    requestAnimationFrame(syncSegIndicators);
+  })
+  .catch((err) => {
+    const el = $("stageEmpty");
+    if (el) { el.classList.remove("hidden"); el.textContent = `初始化失败：${err.message}`; }
+  });
