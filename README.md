@@ -58,3 +58,9 @@ python3 scripts/run_benchmark.py --mode simulate --mwp-enabled --resolution 256 
 python3 scripts/run_benchmark.py --mode eval-vsmb --data-root /path/to/VSMB
 python3 scripts/run_benchmark.py --mode eval-snl --data-root /path/to/SNL
 ```
+
+---
+
+## 五、交接说明
+
+项目当前分支、工作区、数据资产限制、红线与待办清单见 [docs/HANDOFF.md](docs/HANDOFF.md)。接手前请先阅读，尤其是「数据资产现状」中 SNL 真值对齐与 VSMB 数据缺失两节。
