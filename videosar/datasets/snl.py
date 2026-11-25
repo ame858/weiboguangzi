@@ -48,7 +48,14 @@ def extract_snl_mp4_to_frames(mp4_path: str | Path, out_dir: str | Path) -> List
 
 
 class SNLDataset(VideoSARSequenceDataset):
-    """SNL Eubank Gate Ka-band Video-SAR dataset with temporal guard-gap splitting."""
+    """SNL Eubank Gate Ka-band Video-SAR dataset with temporal guard-gap splitting.
+
+    All frame boundaries are 1-based. Default reproduces the standard protocol
+    (train 1..600, guard 601..616, test 617..end). For the annotated subset
+    (GT covers 150..527) pass e.g. ``train_start_frame=150``,
+    ``train_end_frame=399``, ``guard_gap_frames=16``, ``test_end_frame=527`` to
+    obtain train 150..399 / guard 400..415 / test 416..527.
+    """
 
     def __init__(
         self,
@@ -57,6 +64,8 @@ class SNLDataset(VideoSARSequenceDataset):
         gt_path: Optional[str | Path] = None,
         train_end_frame: int = 600,
         guard_gap_frames: int = 16,
+        train_start_frame: int = 1,
+        test_end_frame: Optional[int] = None,
         window_size: int = 5,
         window_stride: int = 1,
         tile_size: int = 512,
@@ -88,15 +97,32 @@ class SNLDataset(VideoSARSequenceDataset):
             parse_mot_or_darklabel_gt(resolved_gt) if resolved_gt is not None else {}
         )
 
-        # Temporal block split with guard gap to prevent window-overlap leakage
+        # Temporal block split with guard gap to prevent window-overlap leakage.
+        # All frame arguments are 1-based (matching GT frame_id and file names);
+        # internally we slice the 0-based ``all_frames`` list.
         n_total = len(all_frames)
+        train_start_idx = max(0, int(train_start_frame) - 1)
+        train_end_idx = min(int(train_end_frame), n_total)       # inclusive 1-based end
+        test_start_idx = min(train_end_idx + guard_gap_frames, n_total)
+        test_end_idx = min(int(test_end_frame), n_total) if test_end_frame is not None else n_total
+
+        if train_start_idx >= train_end_idx:
+            raise ValueError(
+                f"Invalid SNL train window: frames {train_start_frame}..{train_end_frame} "
+                f"(n_frames={n_total})."
+            )
+        if test_start_idx >= test_end_idx:
+            raise ValueError(
+                f"Invalid SNL test window: frames {test_start_idx + 1}..{test_end_idx} "
+                f"after guard gap {guard_gap_frames}."
+            )
+
         if split == "train":
-            selected_indices = list(range(0, min(train_end_frame, n_total)))
+            selected_indices = list(range(train_start_idx, train_end_idx))
         elif split == "test":
-            test_start = min(train_end_frame + guard_gap_frames, n_total)
-            selected_indices = list(range(test_start, n_total))
+            selected_indices = list(range(test_start_idx, test_end_idx))
         else:
-            selected_indices = list(range(0, n_total))
+            selected_indices = list(range(train_start_idx, test_end_idx))
 
         selected_frames = [all_frames[i] for i in selected_indices]
         remapped_ann: Dict[int, List[BoxDetection]] = {}

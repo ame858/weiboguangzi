@@ -33,3 +33,4 @@ videosar-gui-code.zip
 # 基准评测产物（可复现，不入库）
 /outputs/
 /data/proposal_v2/
+/data/proposal_v2_snl399/

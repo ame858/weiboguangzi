@@ -5,8 +5,10 @@ Six strictly disjoint splits (6:2:2 in-distribution + three OOD arms) with
 per-sequence mask / kinematics / MOT truth exported by ``VideoSARSimulator``.
 Two anti-leakage rules are enforced by construction:
 
-* SNL real empty-road backgrounds are read ONLY from frames 1..600 (train).
-  Test frames 601..900 are never opened.
+* SNL real empty-road backgrounds are read ONLY from the configured train
+  window ``[--snl-min-train-frame, --snl-max-train-frame]`` (default 1..600).
+  Frames beyond the max are never opened; pass the train/test boundary (e.g.
+  399 for the annotated 150..527 subset) to prevent background leakage.
 * ``train_norm_stats`` is computed ONLY from id_train sequences; val/test/OOD
   pixels never contribute to mean / std / p01 / p99.
 """
@@ -63,11 +65,18 @@ def _config_for_split(split: str, resolution: int, num_frames: int, seed: int) -
     return sim_cfg, radar_cfg, mwp
 
 
-def _collect_real_backgrounds(snl_dir: str | None, rng: np.random.Generator) -> List[np.ndarray]:
+def _collect_real_backgrounds(
+    snl_dir: str | None,
+    rng: np.random.Generator,
+    min_train_frame: int = 1,
+    max_train_frame: int = 600,
+) -> List[np.ndarray]:
     """Extract up to 10 time-median empty-road backgrounds from SNL train frames.
 
-    Only frames numbered <= 600 are ever read; frames 601..900 are excluded
-    before any I/O. Each group of 100 train frames contributes one background.
+    Only frames in ``[min_train_frame, max_train_frame]`` are ever read. The
+    caller sets the upper bound to the train/test boundary (default 600, or
+    399 for the annotated-subset contrast) so test frames are excluded before
+    any I/O. Each group of 100 train frames contributes one background.
     """
     if not snl_dir:
         return []
@@ -82,7 +91,7 @@ def _collect_real_backgrounds(snl_dir: str | None, rng: np.random.Generator) -> 
         if not digits:
             continue
         idx = int(digits)
-        if idx > 600:  # hard guard: never touch test frames
+        if idx < min_train_frame or idx > max_train_frame:  # hard guard
             continue
         candidates.append((idx, p))
     candidates.sort(key=lambda x: x[0])
@@ -90,7 +99,7 @@ def _collect_real_backgrounds(snl_dir: str | None, rng: np.random.Generator) -> 
         return []
 
     backgrounds: List[np.ndarray] = []
-    for start in range(0, min(len(candidates), 600), 100):
+    for start in range(0, len(candidates), 100):
         group = [p for idx, p in candidates[start : start + 100]]
         if len(group) < 8:
             continue
@@ -119,9 +128,19 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, object]:
         raise ValueError("--resolution must be >= 256 (legacy 96x64 regime forbidden).")
 
     rng = np.random.default_rng(args.seed)
-    real_bgs = _collect_real_backgrounds(args.snl_train_frames_dir, rng)
-    # Only frames <= 600 are ever opened; record that hard ceiling when used.
-    max_train_frame = 600 if real_bgs else 0
+    # getattr keeps direct Namespace construction (tests) backward-compatible.
+    min_train_frame = int(getattr(args, "snl_min_train_frame", 1))
+    max_train_frame = int(getattr(args, "snl_max_train_frame", 600))
+    if min_train_frame < 1 or max_train_frame < min_train_frame:
+        raise ValueError(
+            f"Invalid SNL train frame window {min_train_frame}..{max_train_frame}."
+        )
+    real_bgs = _collect_real_backgrounds(
+        args.snl_train_frames_dir, rng,
+        min_train_frame=min_train_frame, max_train_frame=max_train_frame,
+    )
+    # Record the exact train-only window actually used for background extraction.
+    used_frame_ceiling = max_train_frame if real_bgs else 0
     splits_manifest: Dict[str, List[Dict[str, object]]] = {name: [] for name, _, _, _ in SPLIT_SPECS}
     seq_counter = 0
 
@@ -186,7 +205,9 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, object]:
             int(r["num_frames"]) for recs in splits_manifest.values() for r in recs
         ),
         "real_bg_used": bool(real_bgs),
-        "snl_max_train_frame_used": max_train_frame,
+        "snl_max_train_frame_used": used_frame_ceiling,
+        "snl_min_train_frame_used": min_train_frame if real_bgs else 0,
+        "snl_train_frame_window": [min_train_frame, max_train_frame],
         "train_norm_stats": stats,
         "splits": splits_manifest,
     }
@@ -203,6 +224,15 @@ def main() -> int:
     parser.add_argument("--num-frames", type=int, default=25)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--snl-train-frames-dir", default=None)
+    parser.add_argument(
+        "--snl-min-train-frame", type=int, default=1,
+        help="Lowest SNL frame index allowed for real-background extraction (1-based).",
+    )
+    parser.add_argument(
+        "--snl-max-train-frame", type=int, default=600,
+        help="Highest SNL frame index allowed for real-background extraction (1-based). "
+             "Set to the train/test boundary (e.g. 399) to prevent background leakage.",
+    )
     parser.add_argument("--smoke-scale", action="store_true")
     args = parser.parse_args()
 
@@ -212,6 +242,7 @@ def main() -> int:
         f"{manifest['total_frames']} frames -> {args.output_dir}"
     )
     print(f"[proposal_v2] real_bg_used={manifest['real_bg_used']} "
+          f"snl_train_frame_window={manifest['snl_train_frame_window']} "
           f"snl_max_train_frame_used={manifest['snl_max_train_frame_used']}")
     return 0
 
