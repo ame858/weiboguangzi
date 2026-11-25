@@ -58,3 +58,11 @@ python3 scripts/run_benchmark.py --mode simulate --mwp-enabled --resolution 256 
 python3 scripts/run_benchmark.py --mode eval-vsmb --data-root /path/to/VSMB
 python3 scripts/run_benchmark.py --mode eval-snl --data-root /path/to/SNL
 ```
+
+---
+
+## 四、历史模块导航
+
+`videosar/` 中仍保留一代研究 CLI 脚本（`stress`、`aperture-study`、`center-study`、`small-shadow`、`snl_causal` 等），它们由 `python -m videosar` 调用，用于复现既有 `deliverables/` 结果，**不属于 v2.0 评测主链路**。这些脚本相互 import，且与部分交付目录耦合，当前不做迁移。
+
+哪些文件属于哪一代、依赖如何、为何暂不归档，见 [docs/legacy-module-index.md](docs/legacy-module-index.md)。新实验请使用上文的 `scripts/run_benchmark.py` 入口。
