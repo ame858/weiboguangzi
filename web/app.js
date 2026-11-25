@@ -324,7 +324,12 @@ async function boot() {
   $("modelPath").value = data.defaults.unet_model || "";
   await reloadSequences();
   v2ModeChanged();
-  await loadV2Runs();
+  // v2 历史列表独立容错：即使 /api/v2/runs 暂不可用也不覆盖主工作台
+  try {
+    await loadV2Runs();
+  } catch (err) {
+    console.warn("loadV2Runs skipped:", err);
+  }
 }
 
 async function reloadSequences(refresh = false) {
@@ -1222,9 +1227,27 @@ const V2_METRIC_ROWS = [
 ];
 const V2_FROC_COLORS = ["#0b57d0", "#b3261e", "#146c2e", "#8b5cf6", "#9a5b00", "#00838f", "#c2185b", "#5f6368"];
 
+function isV2Mode() {
+  return Boolean(document.querySelector(".stage")?.classList.contains("v2-mode"));
+}
+
 function setV2Mode(on) {
-  document.querySelector(".stage")?.classList.toggle("v2-mode", Boolean(on));
-  $("v2Panel")?.classList.toggle("hidden", !on);
+  const active = Boolean(on);
+  if (active) stopPlayback();
+  document.querySelector(".stage")?.classList.toggle("v2-mode", active);
+  $("v2Panel")?.classList.toggle("hidden", !active);
+  if (!active) $("v2FrocTip")?.classList.add("hidden");
+}
+
+function exitV2Mode() {
+  state.v2.runId = "";
+  state.v2.data = null;
+  const sel = $("v2RunSelect");
+  if (sel) {
+    sel.value = "";
+    syncM3Select(sel);
+  }
+  setV2Mode(false);
 }
 
 function v2ModeChanged() {
@@ -1301,9 +1324,11 @@ function renderV2Partition(bodyId, countId, domain, summary, data) {
 function renderFroc(points) {
   const svg = $("v2Froc");
   const legend = $("v2FrocLegend");
+  const tip = $("v2FrocTip");
   if (!svg || !legend) return;
   svg.innerHTML = "";
   legend.innerHTML = "";
+  if (tip) tip.classList.add("hidden");
   if (!points.length) {
     svg.innerHTML = '<text x="360" y="150" text-anchor="middle" font-size="13" fill="#747775">本次运行无 FROC 曲线数据</text>';
     return;
@@ -1330,6 +1355,12 @@ function renderFroc(points) {
     parts.push(`<line x1="${gx}" y1="${top}" x2="${gx}" y2="${top + ph}" stroke="#e1e5ec" stroke-width="1"/>`);
     parts.push(`<text x="${gx}" y="${top + ph + 18}" text-anchor="middle" font-size="11" fill="#747775">${((maxFa * i) / 5).toFixed(2)}</text>`);
   }
+  // 1.0 FA 参考虚线（呼应指标表中的 Recall@1FA）
+  if (maxFa >= 1) {
+    const x1 = px(1);
+    parts.push(`<line x1="${x1.toFixed(2)}" y1="${top}" x2="${x1.toFixed(2)}" y2="${top + ph}" stroke="#0b57d0" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4"/>`);
+    parts.push(`<text x="${Math.min(x1 + 4, width - right - 38).toFixed(2)}" y="${top + 12}" font-size="10.5" fill="#0b57d0" opacity="0.8">1.0 FA</text>`);
+  }
   parts.push(`<line x1="${left}" y1="${top + ph}" x2="${width - right}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
   parts.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
   parts.push(`<text x="${left + pw / 2}" y="${height - 6}" text-anchor="middle" font-size="11" fill="#444746">FA / frame</text>`);
@@ -1340,10 +1371,36 @@ function renderFroc(points) {
     const ordered = [...group.pts].sort((a, b) => (Number(a.fa_per_frame) || 0) - (Number(b.fa_per_frame) || 0));
     const d = ordered.map((p, i) => `${i ? "L" : "M"}${px(p.fa_per_frame).toFixed(2)},${py(p.recall).toFixed(2)}`).join(" ");
     parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`);
+    // 适度采样可悬停节点，避免点数过多时重叠拥挤
+    const stride = Math.max(1, Math.ceil(ordered.length / 40));
+    ordered.forEach((p, idx) => {
+      if (idx % stride !== 0 && idx !== ordered.length - 1) return;
+      const cx = px(p.fa_per_frame).toFixed(2);
+      const cy = py(p.recall).toFixed(2);
+      const faText = fmt(Number(p.fa_per_frame), 3);
+      const rcText = fmt(Number(p.recall), 3);
+      const label = esc(`${group.split} · ${group.domain}`);
+      parts.push(`<circle class="froc-pt" cx="${cx}" cy="${cy}" r="3.2" fill="${color}" stroke="#ffffff" stroke-width="1.2" data-label="${label}" data-fa="${faText}" data-recall="${rcText}"><title>${label} | FA/frame ${faText} | Recall ${rcText}</title></circle>`);
+    });
     legend.insertAdjacentHTML("beforeend", `<span class="lg"><span class="sw" style="background:${color}"></span>${esc(`${group.split} · ${group.domain}`)}</span>`);
     colorIndex++;
   }
   svg.innerHTML = parts.join("");
+
+  if (tip) {
+    const wrap = svg.parentElement;
+    svg.querySelectorAll(".froc-pt").forEach((pt) => {
+      pt.addEventListener("mouseenter", () => {
+        const wRect = wrap.getBoundingClientRect();
+        const pRect = pt.getBoundingClientRect();
+        tip.innerHTML = `<b>${pt.dataset.label}</b><br/>FA/frame: ${pt.dataset.fa} · Recall: ${pt.dataset.recall}`;
+        tip.style.left = `${Math.round(pRect.left - wRect.left + pRect.width / 2)}px`;
+        tip.style.top = `${Math.round(pRect.top - wRect.top)}px`;
+        tip.classList.remove("hidden");
+      });
+      pt.addEventListener("mouseleave", () => tip.classList.add("hidden"));
+    });
+  }
 }
 
 async function runV2Benchmark() {
@@ -1807,6 +1864,8 @@ function onGlobalKeydown(ev) {
   if (!$("metricSheet").classList.contains("hidden")) return;
 
   if (key === "?") { ev.preventDefault(); toggleKbdHelp(); return; }
+  // v2 看板里不响应播放/步进/灯箱等影像键（速查卡除外）
+  if (isV2Mode()) return;
   if (key === "h" || key === "H") { if (!ev.repeat) setPeek(true); return; }
   if (key === "t" || key === "T") { ev.preventDefault(); toggleTheme(); return; }
   if (key === "[") { ev.preventDefault(); toggleRail(); return; }
@@ -2358,6 +2417,7 @@ function bind() {
   $("v2RunSelect").addEventListener("change", (e) =>
     loadV2Run(e.target.value).catch((err) => setBadge($("runBadge"), err.message, "err")));
   $("btnV2Run").addEventListener("click", runV2Benchmark);
+  $("btnV2Back")?.addEventListener("click", exitV2Mode);
   $("btnRawLog").addEventListener("click", (ev) => {
     ev.stopPropagation();
     $("logWrap").classList.remove("collapsed");
@@ -2447,7 +2507,8 @@ function bind() {
         return;
       }
     }
-    // 弹层是模态的：开着时不允许空格/方向键改背后的帧
+    // v2.0 评测看板与模态弹层打开时，不允许空格/方向键在后台切换影像帧
+    if (isV2Mode()) return;
     if (!$("metricSheet").classList.contains("hidden")) return;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
     // 焦点在按钮上时，空格是原生激活，不能被劫持成播放
