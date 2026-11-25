@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import csv
+import json
 import cv2
 import numpy as np
 
@@ -64,13 +66,24 @@ class SimulatedSequence:
     frames: np.ndarray                         # (T, H, W) float32 in [0, 1]
     ground_truths: List[BoxDetection]
     static_distractors: List[StaticDistractorSpec]
+    shadow_masks: np.ndarray = field(default_factory=lambda: np.zeros((0, 0, 0), dtype=np.uint8))
+    static_distractor_mask: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), dtype=np.uint8))
+    kinematics: List[Dict[str, object]] = field(default_factory=list)
     metadata: Dict[str, object] = field(default_factory=dict)
 
     def export_mot_directory(self, out_dir: str | Path) -> Path:
-        """Save frames and MOT-format ``gt/gt.txt`` compatible with ``VSMBDataset``."""
+        """Save frames + MOT labels + mask/kinematics/meta truth products.
+
+        Writes ``img1/``, ``gt/gt.txt`` (compatible with ``VSMBDataset``),
+        ``masks/%06d.png``, ``static_distractor_mask.png``, ``kinematics.csv``
+        and ``meta.json``. All newly added products are optional: legacy
+        callers that construct ``SimulatedSequence`` without them still get
+        the original two-file export.
+        """
         root = Path(out_dir) / self.sequence_id
         img_dir = root / "img1"
         gt_dir = root / "gt"
+        mask_dir = root / "masks"
         img_dir.mkdir(parents=True, exist_ok=True)
         gt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -86,6 +99,24 @@ class SimulatedSequence:
                 f"{g.frame_id},{g.track_id},{g.x1:.2f},{g.y1:.2f},{w:.2f},{h:.2f},1,{g.class_id},1.0"
             )
         (gt_dir / "gt.txt").write_text("\n".join(gt_lines) + ("\n" if gt_lines else ""), encoding="utf-8")
+
+        if self.shadow_masks.size > 0:
+            mask_dir.mkdir(parents=True, exist_ok=True)
+            for t in range(self.shadow_masks.shape[0]):
+                cv2.imwrite(str(mask_dir / f"{t + 1:06d}.png"), self.shadow_masks[t])
+        if self.static_distractor_mask.size > 0:
+            cv2.imwrite(str(root / "static_distractor_mask.png"), self.static_distractor_mask)
+
+        kin_fields = ["frame_id", "track_id", "x_px", "y_px", "v_mps", "theta_rad", "motion_state"]
+        with (root / "kinematics.csv").open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=kin_fields)
+            writer.writeheader()
+            for row in self.kinematics:
+                writer.writerow({k: row.get(k, "") for k in kin_fields})
+
+        (root / "meta.json").write_text(
+            json.dumps(self.metadata, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return root
 
 
@@ -294,19 +325,57 @@ class VideoSARSimulator:
         targets = self._sample_targets(rng)
 
         frames = np.zeros((n_frames, h, w), dtype=np.float32)
+        shadow_masks = np.zeros((n_frames, h, w), dtype=np.uint8)
         gts: List[BoxDetection] = []
+        kinematics: List[Dict[str, object]] = []
         mwp_evm_values: List[float] = []
 
         yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
         speckle_shape = max(self.radar_cfg.n_looks, 1.0)
+
+        # Stop-and-go: pick ~1/3 of targets, each stops for 4-6 frames in the
+        # middle third of the sequence, then accelerates back to motion.
+        stop_windows: Dict[int, Tuple[int, int]] = {}
+        if self.sim_cfg.enable_stop_and_go and targets:
+            stop_candidates = [t.track_id for t in targets]
+            rng.shuffle(stop_candidates)
+            for track_id in stop_candidates[: max(1, len(stop_candidates) // 3)]:
+                stop_len = int(min(rng.integers(4, 7), max(1, n_frames - 2)))
+                mid_start = max(1, n_frames // 3)
+                mid_end = max(mid_start + 1, n_frames - stop_len)
+                stop_start = int(rng.integers(mid_start, mid_end))
+                stop_windows[track_id] = (stop_start, stop_start + stop_len)
+
+        # Static distractor mask (0/255) for false-positive attribution.
+        static_mask = np.zeros((h, w), dtype=np.uint8)
+        for d in distractors:
+            sh_cx = d.cx_px + np.cos(look_rad) * (d.shadow_len_px * 0.5 + d.height_px * 0.4)
+            sh_cy = d.cy_px + np.sin(look_rad) * (d.shadow_len_px * 0.5 + d.height_px * 0.4)
+            sx1 = int(np.clip(sh_cx - d.width_px * 0.5, 0, w - 1))
+            sx2 = int(np.clip(sh_cx + d.width_px * 0.5, 1, w))
+            sy1 = int(np.clip(sh_cy - d.shadow_len_px * 0.5, 0, h - 1))
+            sy2 = int(np.clip(sh_cy + d.shadow_len_px * 0.5, 1, h))
+            static_mask[sy1:sy2, sx1:sx2] = 255
 
         for t_idx in range(n_frames):
             t_sec = t_idx * dt
             intensity = static_scene.copy()
 
             for tgt in targets:
-                # Curved road kinematics with acceleration
-                disp_m = tgt.speed_mps * t_sec + 0.5 * tgt.accel_mps2 * (t_sec ** 2)
+                stop_window = stop_windows.get(tgt.track_id)
+                motion_state = "moving"
+                cum_disp_m = tgt.speed_mps * t_sec + 0.5 * tgt.accel_mps2 * (t_sec ** 2)
+                if stop_window is not None:
+                    s_start, s_end = stop_window
+                    if s_start <= t_idx < s_end:
+                        motion_state = "stopped"
+                        cum_disp_m = tgt.speed_mps * s_start * dt + 0.5 * tgt.accel_mps2 * ((s_start * dt) ** 2)
+                    elif t_idx >= s_end:
+                        # Re-accelerate after the stop, with an extra push.
+                        t_move = t_sec - (s_end - s_start) * dt
+                        cum_disp_m = tgt.speed_mps * s_start * dt + tgt.speed_mps * (t_move - s_start * dt) + 0.5 * tgt.accel_mps2 * (t_move ** 2)
+
+                disp_m = cum_disp_m
                 x_pos = tgt.s0_px + disp_m / px_m
                 if x_pos < 8.0 or x_pos > (w - 8.0):
                     continue
@@ -315,10 +384,19 @@ class VideoSARSimulator:
                     continue
 
                 theta = self._road_tangent_angle(x_pos)
-                v_inst = tgt.speed_mps + tgt.accel_mps2 * t_sec
+                v_inst = max(0.0, tgt.speed_mps + tgt.accel_mps2 * t_sec)
+                if motion_state == "stopped":
+                    v_inst = 0.0
 
-                # Geometric shadow length = H / tan(grazing_angle)
+                # Speed-shadow coupling: faster targets cast longer, fainter shadows.
+                speed_ratio = float(np.clip(v_inst / max(self.sim_cfg.max_speed_mps, 1.0), 0.0, 1.5))
                 shadow_ext_px = (tgt.height_m / max(np.tan(grazing_rad), 0.1)) / px_m
+                shadow_ext_px *= 1.0 + 0.55 * speed_ratio
+                attenuation = float(np.clip(tgt.shadow_attenuation - 0.12 * speed_ratio, 0.05, 0.95))
+                if motion_state == "stopped":
+                    # Stationary phase: shadow collapses, bright scatterer returns.
+                    shadow_ext_px *= 0.35
+                    attenuation = min(attenuation, 0.12)
                 len_px = max(tgt.length_m / px_m, 6.0)
                 wid_px = max(tgt.width_m / px_m, 4.0)
 
@@ -334,7 +412,8 @@ class VideoSARSimulator:
                 shadow_profile = np.exp(
                     -0.5 * ((rx / max(sx_sigma, 1.5)) ** 2 + (ry / max(sy_sigma, 1.5)) ** 2)
                 )
-                intensity *= 1.0 - (1.0 - tgt.shadow_attenuation) * shadow_profile
+                intensity *= 1.0 - (1.0 - attenuation) * shadow_profile
+                shadow_masks[t_idx][shadow_profile >= 0.35] = 255
 
                 # Doppler azimuth displacement & defocusing smear of vehicle scatterer
                 v_radial = v_inst * np.sin(theta - look_rad)
@@ -355,7 +434,15 @@ class VideoSARSimulator:
                         + ((yy - smear_cy) / max(wid_px * 0.55, 2.0)) ** 2
                     )
                 )
-                intensity = np.clip(intensity + 0.16 * smear, 0.0, 1.0)
+                if motion_state == "stopped":
+                    # Bright stationary scatterer returns near the vehicle center.
+                    body = np.exp(
+                        -0.5 * (((xx - x_pos) / max(len_px * 0.5, 3.0)) ** 2
+                                + ((yy - y_pos) / max(wid_px * 0.5, 2.0)) ** 2)
+                    )
+                    intensity = np.clip(intensity + 0.28 * body, 0.0, 1.0)
+                else:
+                    intensity = np.clip(intensity + 0.16 * smear, 0.0, 1.0)
 
                 # Ground-truth shadow bounding box
                 half_w = max(0.5 * (abs(len_px * np.cos(theta)) + abs((wid_px + shadow_ext_px * 0.35) * np.sin(theta))), 4.0)
@@ -377,6 +464,15 @@ class VideoSARSimulator:
                         track_id=tgt.track_id,
                     )
                 )
+                kinematics.append({
+                    "frame_id": t_idx + 1,
+                    "track_id": tgt.track_id,
+                    "x_px": float(x_pos),
+                    "y_px": float(y_pos),
+                    "v_mps": float(v_inst),
+                    "theta_rad": float(theta),
+                    "motion_state": motion_state,
+                })
 
             # Multiplicative multi-look Gamma speckle noise
             speckle = rng.gamma(
@@ -401,6 +497,9 @@ class VideoSARSimulator:
             frames=frames,
             ground_truths=gts,
             static_distractors=distractors,
+            shadow_masks=shadow_masks,
+            static_distractor_mask=static_mask,
+            kinematics=kinematics,
             metadata={
                 "backend": self.sim_cfg.backend,
                 "resolution": f"{h}x{w}",
@@ -410,5 +509,7 @@ class VideoSARSimulator:
                 "mwp_enabled": self.mwp_cfg.enabled,
                 "mwp_mean_evm_rms": float(np.mean(mwp_evm_values)) if mwp_evm_values else 0.0,
                 "seed": self.sim_cfg.seed if seed is None else seed,
+                "enable_stop_and_go": self.sim_cfg.enable_stop_and_go,
+                "stop_windows": {str(k): list(v) for k, v in stop_windows.items()},
             },
         )

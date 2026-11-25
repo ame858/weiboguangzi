@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import argparse
 import json
 import math
 import tempfile
@@ -27,6 +28,8 @@ from videosar.metrics import (
     BoxDetection,
     evaluate_detection_and_froc,
     evaluate_mot,
+    evaluate_pixel_mask_metrics,
+    evaluate_kinematics_error,
 )
 from videosar.mwp import MicrowavePhotonicsChannel
 from videosar.proposal_data import (
@@ -34,7 +37,11 @@ from videosar.proposal_data import (
     load_proposal_dataset,
 )
 from videosar.simulation import VideoSARSimulator
-from videosar.tracker import ByteTrackLite, detect_moving_shadows_baseline
+from videosar.tracker import (
+    ByteTrackLite,
+    detect_moving_shadows_baseline,
+    detect_low_intensity_threshold_baseline,
+)
 
 
 class TestVideoSARRefactor(unittest.TestCase):
@@ -318,6 +325,122 @@ class TestDetectorRegistry(unittest.TestCase):
                     f"coordinates changed at frame {t}",
                 )
                 self.assertEqual(da.score, db.score, f"confidence changed at frame {t}")
+
+
+    def test_export_mot_directory_writes_all_truth_products(self) -> None:
+        cfg = SimulationConfig(height=256, width=256, num_frames=6, num_static_distractors=2, seed=3)
+        seq = VideoSARSimulator(cfg).generate_sequence("truth_seq", seed=3)
+        self.assertEqual(seq.shadow_masks.shape, (6, 256, 256))
+        self.assertEqual(set(np.unique(seq.shadow_masks)), {0, 255})
+        self.assertEqual(seq.static_distractor_mask.shape, (256, 256))
+        self.assertGreater(len(seq.kinematics), 0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = seq.export_mot_directory(tmp)
+            expected = [
+                "img1", "gt/gt.txt", "masks", "static_distractor_mask.png",
+                "kinematics.csv", "meta.json",
+            ]
+            for rel in expected:
+                self.assertTrue((root / rel).exists(), rel)
+            self.assertEqual(len(list((root / "masks").glob("*.png"))), 6)
+            kin_header = (root / "kinematics.csv").read_text(encoding="utf-8").splitlines()[0]
+            self.assertEqual(
+                kin_header,
+                "frame_id,track_id,x_px,y_px,v_mps,theta_rad,motion_state",
+            )
+
+    def test_build_proposal_dataset_smoke_splits_and_train_only_norm(self) -> None:
+        import importlib.util
+
+        scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
+        spec = importlib.util.spec_from_file_location("build_proposal_dataset", scripts_dir / "build_proposal_dataset.py")
+        self.assertIsNotNone(spec and spec.loader)
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            args = argparse.Namespace(
+                output_dir=str(Path(tmp) / "out"),
+                resolution=256,
+                num_frames=8,
+                seed=11,
+                snl_train_frames_dir=None,
+                smoke_scale=True,
+            )
+            manifest = mod.build_dataset(args)
+            self.assertEqual(manifest["total_sequences"], 12)
+            self.assertEqual(manifest["total_frames"], 96)
+            all_ids = [r["sequence_id"] for recs in manifest["splits"].values() for r in recs]
+            self.assertEqual(len(all_ids), len(set(all_ids)))
+            self.assertEqual(
+                set(manifest["splits"]),
+                {"id_train", "id_val", "id_test", "ood_speed", "ood_background", "ood_mwp_noise"},
+            )
+            self.assertIn("mean", manifest["train_norm_stats"])
+            self.assertTrue((Path(tmp) / "out" / "dataset_manifest.json").exists())
+
+    def test_dual_baselines_return_boxes_and_masks(self) -> None:
+        rng = np.random.default_rng(21)
+        frames = np.full((6, 96, 96), 0.7, dtype=np.float32)
+        # ~17% dark area so the 15th-percentile threshold segments the patch.
+        frames[:, 28:68, 28:68] = 0.05  # persistent dark patch (1600 px)
+        frames[3, 78:88, 78:88] = 0.02  # transient dark patch
+
+        sboxes, smasks = detect_low_intensity_threshold_baseline(frames, low_percentile=15.0)
+        self.assertEqual(smasks.shape, frames.shape)
+        self.assertGreater(len(sboxes), 0)
+        self.assertTrue(set(np.unique(smasks)).issubset({0, 255}))
+
+        tresult = detect_moving_shadows_baseline(frames, return_masks=True)
+        self.assertIsInstance(tresult, tuple)
+        tboxes, tmask = tresult  # type: ignore[misc]
+        self.assertEqual(tmask.shape, frames.shape)
+        self.assertGreater(len(tboxes), 0)
+        # Backward-compatible call still returns a bare list.
+        self.assertIsInstance(detect_moving_shadows_baseline(frames), list)
+
+    def test_pixel_metrics_no_nan_on_empty_and_distractor(self) -> None:
+        empty = np.zeros((3, 48, 48), dtype=np.uint8)
+        perfect = evaluate_pixel_mask_metrics(empty, empty)
+        self.assertEqual(perfect["pixel_f1"], 1.0)
+        self.assertEqual(perfect["region_iou"], 1.0)
+        for v in perfect.values():
+            self.assertTrue(math.isfinite(float(v)))
+
+        gt = np.zeros((2, 48, 48), dtype=np.uint8)
+        gt[:, 5:15, 5:15] = 255
+        pred = gt.copy()
+        distractor = np.zeros((48, 48), dtype=np.uint8)
+        distractor[30:40, 30:40] = 255
+        res = evaluate_pixel_mask_metrics(pred, gt, static_distractor_mask=distractor)
+        self.assertEqual(res["pixel_f1"], 1.0)
+        self.assertEqual(res["static_distractor_fp_rate"], 0.0)
+        for v in res.values():
+            self.assertTrue(math.isfinite(float(v)))
+
+        pred[:, 30:40, 30:40] = 255  # false positives on distractor
+        res2 = evaluate_pixel_mask_metrics(pred, gt, static_distractor_mask=distractor)
+        self.assertGreater(res2["static_distractor_fp_rate"], 0.0)
+
+    def test_kinematics_error_finite(self) -> None:
+        empty = evaluate_kinematics_error([], [])
+        self.assertEqual(empty["speed_mae_mps"], 0.0)
+        self.assertEqual(empty["heading_mae_deg"], 0.0)
+        self.assertEqual(empty["matched_velocity_samples"], 0.0)
+
+        boxes = [
+            BoxDetection(frame_id=1, x1=10, y1=10, x2=20, y2=20, track_id=1),
+            BoxDetection(frame_id=2, x1=14, y1=10, x2=24, y2=20, track_id=1),
+        ]
+        gt = [
+            {"frame_id": 1, "x_px": 15.0, "y_px": 15.0, "v_mps": 1.0, "theta_rad": 0.0},
+            {"frame_id": 2, "x_px": 19.0, "y_px": 15.0, "v_mps": 0.9, "theta_rad": 0.0},
+        ]
+        res = evaluate_kinematics_error(boxes, gt, pixel_spacing_m=0.25, frame_rate_hz=5.0)
+        self.assertEqual(res["matched_velocity_samples"], 1.0)
+        for v in res.values():
+            self.assertTrue(math.isfinite(float(v)))
 
 
 if __name__ == "__main__":

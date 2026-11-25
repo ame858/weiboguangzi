@@ -58,6 +58,10 @@ class ExperimentRunner:
         ground_truths: Sequence[BoxDetection],
         num_frames: int,
         tracked_predictions: Sequence[BoxDetection] | None = None,
+        condition_tag: str = "default",
+        avg_frame_time_ms: Optional[float] = None,
+        pixel_metrics: Optional[Dict[str, float]] = None,
+        kinematics_metrics: Optional[Dict[str, float]] = None,
     ) -> Dict[str, object]:
         """Evaluate one isolated domain split ('real' or 'synthetic')."""
         if domain not in {"real", "synthetic"}:
@@ -104,6 +108,10 @@ class ExperimentRunner:
             "recall_at_fa_50": det_50["recall_at_fa"],
             "froc_curve_50": det_50["froc_curve"],
             "mot": mot_res,
+            "condition_tag": condition_tag,
+            "avg_frame_time_ms": avg_frame_time_ms,
+            "pixel_metrics": pixel_metrics or {},
+            "kinematics_metrics": kinematics_metrics or {},
         }
         self.records[split_name] = entry
         return entry
@@ -153,6 +161,11 @@ class ExperimentRunner:
             "idf1",
             "hota",
             "id_switches",
+            "condition_tag",
+            "pixel_f1",
+            "region_iou",
+            "avg_frame_time_ms",
+            "speed_mae_mps",
         ]
         with summary_path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=fieldnames)
@@ -177,6 +190,14 @@ class ExperimentRunner:
                         "idf1": f"{float(mot['idf1']):.4f}",
                         "hota": f"{float(mot['hota']):.4f}",
                         "id_switches": int(mot["id_switches"]),
+                        "condition_tag": rec.get("condition_tag", "default"),
+                        "pixel_f1": f"{float(rec.get('pixel_metrics', {}).get('pixel_f1', 0.0)):.4f}",
+                        "region_iou": f"{float(rec.get('pixel_metrics', {}).get('region_iou', 0.0)):.4f}",
+                        "avg_frame_time_ms": (
+                            f"{float(rec['avg_frame_time_ms']):.3f}"
+                            if rec.get("avg_frame_time_ms") is not None else ""
+                        ),
+                        "speed_mae_mps": f"{float(rec.get('kinematics_metrics', {}).get('speed_mae_mps', 0.0)):.4f}",
                     }
                 )
 

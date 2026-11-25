@@ -352,3 +352,122 @@ def evaluate_mot(
         "fn": float(total_fn),
         "tp": float(total_tp),
     }
+
+
+def evaluate_pixel_mask_metrics(
+    pred_masks: np.ndarray,
+    gt_masks: np.ndarray,
+    static_distractor_mask: np.ndarray | None = None,
+) -> Dict[str, float]:
+    """Pixel precision/recall/F1 and region IoU with explicit empty-scene handling.
+
+    Both inputs are ``(T, H, W)`` arrays with non-zero pixels marking shadows.
+    All-zero predictions and ground truth count as a perfect empty match
+    (1.0) rather than producing ``0/0 -> NaN``. Region IoU is computed on the
+    union of all frames so it reflects the whole-sequence shadow footprint.
+    """
+    pred_bin = np.asarray(pred_masks) > 0
+    gt_bin = np.asarray(gt_masks) > 0
+    if pred_bin.shape != gt_bin.shape:
+        raise ValueError(
+            f"pred/gt mask shapes differ: {pred_bin.shape} vs {gt_bin.shape}"
+        )
+
+    tp = float(np.count_nonzero(pred_bin & gt_bin))
+    fp = float(np.count_nonzero(pred_bin & ~gt_bin))
+    fn = float(np.count_nonzero(~pred_bin & gt_bin))
+
+    if tp + fp == 0.0:
+        precision = 1.0 if fn == 0.0 else 0.0
+    else:
+        precision = tp / (tp + fp)
+    if tp + fn == 0.0:
+        recall = 1.0 if fp == 0.0 else 0.0
+    else:
+        recall = tp / (tp + fn)
+    if precision + recall == 0.0:
+        f1 = 0.0
+    else:
+        f1 = 2.0 * precision * recall / (precision + recall)
+
+    pred_union = np.any(pred_bin, axis=0)
+    gt_union = np.any(gt_bin, axis=0)
+    inter = float(np.count_nonzero(pred_union & gt_union))
+    union = float(np.count_nonzero(pred_union | gt_union))
+    region_iou = 1.0 if union == 0.0 else inter / union
+
+    out: Dict[str, float] = {
+        "pixel_precision": float(precision),
+        "pixel_recall": float(recall),
+        "pixel_f1": float(f1),
+        "region_iou": float(region_iou),
+    }
+
+    if static_distractor_mask is not None:
+        s_mask = np.asarray(static_distractor_mask) > 0
+        distractor_total = float(np.count_nonzero(s_mask))
+        if distractor_total == 0.0:
+            out["static_distractor_fp_rate"] = 0.0
+        else:
+            fp_on_distractor = float(
+                np.count_nonzero(pred_bin & s_mask[None, :, :])
+            )
+            out["static_distractor_fp_rate"] = fp_on_distractor / distractor_total
+    return out
+
+
+def evaluate_kinematics_error(
+    tracked_boxes: Sequence[BoxDetection],
+    gt_kinematics: Sequence[Dict[str, object]],
+    pixel_spacing_m: float = 0.25,
+    frame_rate_hz: float = 5.0,
+) -> Dict[str, float]:
+    """Estimate speed/heading from tracked box centres and compare to GT.
+
+    Boxes are grouped by ``track_id`` and sorted by frame; each consecutive
+    pair yields a velocity sample. GT samples are matched by nearest frame and
+    position. Returns zeros (never NaN) when there are no matched samples.
+    """
+    by_track: Dict[int, List[BoxDetection]] = {}
+    for b in tracked_boxes:
+        by_track.setdefault(int(b.track_id), []).append(b)
+
+    gt_by_frame: Dict[int, List[Dict[str, object]]] = {}
+    for row in gt_kinematics:
+        gt_by_frame.setdefault(int(row["frame_id"]), []).append(row)
+
+    dt = 1.0 / max(frame_rate_hz, 1e-6)
+    speed_errors: List[float] = []
+    heading_errors: List[float] = []
+
+    for track_id, boxes in by_track.items():
+        ordered = sorted(boxes, key=lambda b: b.frame_id)
+        for prev, cur in zip(ordered, ordered[1:]):
+            dx = ((cur.x1 + cur.x2) - (prev.x1 + prev.x2)) * 0.5
+            dy = ((cur.y1 + cur.y2) - (prev.y1 + prev.y2)) * 0.5
+            est_vx = (dx * pixel_spacing_m) / dt
+            est_vy = (dy * pixel_spacing_m) / dt
+            est_speed = float(np.hypot(est_vx, est_vy))
+            est_heading = float(np.arctan2(est_vy, est_vx))
+
+            candidates = gt_by_frame.get(int(cur.frame_id), [])
+            if not candidates:
+                continue
+            cx = (cur.x1 + cur.x2) * 0.5
+            cy = (cur.y1 + cur.y2) * 0.5
+            best = min(
+                candidates,
+                key=lambda r: (float(r["x_px"]) - cx) ** 2 + (float(r["y_px"]) - cy) ** 2,
+            )
+            gt_speed = abs(float(best["v_mps"]))
+            gt_heading = float(best["theta_rad"])
+            speed_errors.append(abs(est_speed - gt_speed))
+            delta = (est_heading - gt_heading + np.pi) % (2.0 * np.pi) - np.pi
+            heading_errors.append(abs(float(np.degrees(delta))))
+
+    n = len(speed_errors)
+    return {
+        "speed_mae_mps": float(np.mean(speed_errors)) if n else 0.0,
+        "heading_mae_deg": float(np.mean(heading_errors)) if n else 0.0,
+        "matched_velocity_samples": float(n),
+    }

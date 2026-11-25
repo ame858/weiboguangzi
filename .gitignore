@@ -25,3 +25,11 @@ desktop.ini
 
 # YOLO 离线权重副本（正式权重在 runs/snl-yolo11-p2/weights）
 deliverables/snl-causal-study/yolo11n.pt
+
+# 历史 GUI 源码打包快照（非当前源码，见 docs/legacy-module-index.md）
+videosar-gui-all-source.txt
+videosar-gui-code.zip
+
+# 基准评测产物（可复现，不入库）
+/outputs/
+/data/proposal_v2/

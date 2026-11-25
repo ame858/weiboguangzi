@@ -70,6 +70,7 @@ class SimulationConfig:
     road_curvature: float = 0.008            # Non-linear curved road trajectory factor
     shadow_contrast_range: Tuple[float, float] = (0.18, 0.45)
     doppler_smear_gain: float = 1.25         # Azimuth shift & defocusing smear strength
+    enable_stop_and_go: bool = False         # Top-journal hard case: stop/start trajectories
     seed: int = 42
     background_image_path: Optional[str] = None
 

@@ -8,7 +8,7 @@ of the box before plugging in heavy deep detectors (e.g., DINO / YOLO / RT-DETR)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple, Union
 import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -151,12 +151,65 @@ class ByteTrackLite:
         return outputs
 
 
+def detect_low_intensity_threshold_baseline(
+    frames: np.ndarray,
+    low_percentile: float = 8.0,
+    min_area_px: int = 24,
+    max_area_px: int = 1800,
+) -> Tuple[List[BoxDetection], np.ndarray]:
+    """Single-frame low-intensity threshold baseline (no temporal context).
+
+    Segments each frame at its own ``low_percentile`` gray-level threshold,
+    removes isolated noise with morphological open/close, and filters connected
+    components by area. Returns detections and a ``(T, H, W)`` uint8 mask with
+    values in ``{0, 255}`` for pixel-level evaluation.
+    """
+    if frames.ndim != 3 or frames.shape[0] < 1:
+        raise ValueError("Expected frames array of shape (T, H, W) with T >= 1.")
+
+    detections: List[BoxDetection] = []
+    pred_masks = np.zeros(frames.shape, dtype=np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
+
+    for t_idx in range(frames.shape[0]):
+        frame = frames[t_idx]
+        thresh = float(np.percentile(frame, low_percentile))
+        mask = (frame <= thresh).astype(np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        pred_masks[t_idx] = mask * 255
+
+        n_labels, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        for lbl in range(1, n_labels):
+            area = int(stats[lbl, cv2.CC_STAT_AREA])
+            if area < min_area_px or area > max_area_px:
+                continue
+            x = int(stats[lbl, cv2.CC_STAT_LEFT])
+            y = int(stats[lbl, cv2.CC_STAT_TOP])
+            w = int(stats[lbl, cv2.CC_STAT_WIDTH])
+            h = int(stats[lbl, cv2.CC_STAT_HEIGHT])
+            detections.append(
+                BoxDetection(
+                    frame_id=t_idx + 1,
+                    x1=float(x),
+                    y1=float(y),
+                    x2=float(x + w),
+                    y2=float(y + h),
+                    score=float(area / max(h * w, 1)),
+                    class_id=1,
+                    track_id=-1,
+                )
+            )
+    return detections, pred_masks
+
+
 def detect_moving_shadows_baseline(
     frames: np.ndarray,
     z_thresh: float = 2.2,
     min_area_px: int = 24,
     max_area_px: int = 1800,
-) -> List[BoxDetection]:
+    return_masks: bool = False,
+) -> Union[List[BoxDetection], Tuple[List[BoxDetection], np.ndarray]]:
     """Causal prefix-median background shadow detector baseline.
 
     At frame t the background is the median of frames 0..t only, so no future
@@ -168,6 +221,7 @@ def detect_moving_shadows_baseline(
 
     detections: List[BoxDetection] = []
     history: List[np.ndarray] = []
+    pred_masks = np.zeros(frames.shape, dtype=np.uint8) if return_masks else None
 
     for t_idx in range(frames.shape[0]):
         history.append(frames[t_idx])
@@ -179,6 +233,8 @@ def detect_moving_shadows_baseline(
         z_map = smooth / std
         mask = (z_map >= z_thresh).astype(np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        if pred_masks is not None:
+            pred_masks[t_idx] = mask * 255
 
         n_labels, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
         for lbl in range(1, n_labels):
@@ -203,4 +259,6 @@ def detect_moving_shadows_baseline(
                     track_id=-1,
                 )
             )
+    if return_masks:
+        return detections, pred_masks  # type: ignore[return-value]
     return detections
