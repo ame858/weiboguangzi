@@ -40,14 +40,14 @@
 | `feat/v2-detector-registry-and-baseline` | `291a425` | `E:/workspace/weiboguangzi-detector` | ✅ 已合入 | 因果检测器注册与基线 |
 | `feat/v2-web-ui-contract` | `6851c44` | `E:/workspace/weiboguangzi-webui` | ✅ 已合入 | FastAPI 对接 v2.0 四文件协议 |
 | `feat/fastapi-web-workbench` | `bf8ba5e` | `E:/workspace/weiboguangzi-web` | ✅ 已合入 | 远端已删，本地仍在 |
-| `feat/proposal-dataset-v2` | `d5e40cf` | `E:/workspace/weiboguangzi-proposal` | ❌ 未合入（2 提交） | **工单 4 成果**：申报书数据集 + 顶刊评测 |
-| `docs/legacy-module-index` | `8c93db9` | `E:/workspace/weiboguangzi-legacy-index` | ❌ 未合入（1 提交） | 历史模块导航（已 cherry-pick 进 proposal 分支） |
-| `docs/handoff-2026-11-25` | 本文档 | `E:/workspace/weiboguangzi-handoff` | ❌ 未合入 | 本交接文档 |
+| `feat/proposal-dataset-v2` | `d5e40cf` | `E:/workspace/weiboguangzi-proposal` | ✅ 已合入 main（2026-11-25 14:26） | **工单 4 成果**：申报书数据集 + 顶刊评测 |
+| `docs/legacy-module-index` | `8c93db9` | `E:/workspace/weiboguangzi-legacy-index` | ✅ 随 proposal 分支合入 | 历史模块导航 |
+| `docs/handoff-2026-11-25` | `0e247b5` | `E:/workspace/weiboguangzi-handoff` | ❌ 未合入 | 本交接文档 |
 | `feat/snl-arch-upgrade` | `98341a9` | — | ❌ 6 提交未合入 | backbone 升级，YOLO11-P2 的基础 |
 | `feat/snl-yolo11-p2` | `c9eb1fa` | — | ❌ 未合入 | 因果 YOLO11-P2 管线 |
 | `gui` / `workbuddy/*` | — | WorkBuddy 内置 worktree | — | GUI 与快照分支，非主线 |
 
-**合入顺序建议**：`docs/legacy-module-index` → `feat/proposal-dataset-v2` → main push → 再评估 `feat/snl-arch-upgrade`。
+**合入状态**：main 已含 v2.0 全部主线成果（含工单 4），本地领先 origin 2 提交待 push。下一步再评估 `feat/snl-arch-upgrade`。
 
 ---
 
@@ -83,8 +83,26 @@
 | :--- | :--- | :--- |
 | SNL Eubank Gate | `E:/workspace/weiboguangzi-refactor/data/snl_v2/frames/` | 899 帧（`frame_00001.png`–`frame_00899.png`），已有 `gt.txt` |
 | VSMB | — | **本地无原始数据**，全盘未找到；`outputs/vsmb_v2_baseline` 是空目录 |
+| proposal_v2（生成集） | `E:/workspace/weiboguangzi-proposal/data/proposal_v2/` | 2026-11-25 全量生成：120 序列 / 3000 帧 / 199MB，已被 gitignore 排除 |
 
-### 已知不可用的跑分
+### 全量数据集已生成（2026-11-25，可复现）
+
+```powershell
+python scripts/build_proposal_dataset.py `
+  --snl-train-frames-dir E:/workspace/weiboguangzi-refactor/data/snl_v2 `
+  --output-dir data/proposal_v2
+```
+
+`dataset_manifest.json` 实测关键字段：
+```
+total_sequences = 120, total_frames = 3000
+real_bg_used = true, snl_max_train_frame_used = 600
+splits = {id_train:54, id_val:18, id_test:18, ood_speed:10, ood_background:10, ood_mwp_noise:10}
+120 个 sequence_id 全唯一；真实 SNL 底图仅用于 id_train（39 组），其余 5 个分区为 0
+train_norm_stats = {mean:95.80, std:35.93, p01:34, p99:200}（受真实底图影响，与 smoke 的 130.47 不同，属正常）
+```
+
+### 已知不可用的跑分（**根因已定位：缺测试区真值**）
 
 `outputs/v2_eval_snl_baseline/metrics.json` 与 `outputs/snl_v2_baseline/metrics.json` 虽有 `real_blind_eval` 分区，但：
 
@@ -92,7 +110,9 @@
 num_gt = 0, num_pred = 13973, map50 = 0.0, FA/frame = 49.37, empty_scene = True
 ```
 
-**这是无真值框的无效跑分，不能作为基线或写进论文/报告。** 原因待查：SNL `gt.txt` 的 frame_id 与拆帧编号是否对齐、DarkLabel 行格式是否被 `parse_mot_or_darklabel_gt` 正确解析。修好之前不要固定存档到 `deliverables/`。
+**根因（已查清，非代码 bug）**：`data/snl_v2/gt.txt` 共 3216 行标注，但 frame_id 只覆盖 **150–527**（369 个唯一帧），而标准 SNL 测试区是 **617–900**，两者完全不重叠——测试区标注行数为 0。全仓仅此一份 SNL gt；`runs/snl-eubank-check/community-annotations.zip` 是 2020 年的分割掩膜包，不含 617+ 框标注。
+
+**结论**：Sim-to-Real 增益对照（617–900 盲测）目前**无法产出有效指标**。需要补充覆盖 617–900 的测试区框标注，或确认现有标注可平移，否则不要硬跑、更不要写进报告。
 
 ---
 
@@ -138,15 +158,20 @@ num_gt = 0, num_pred = 13973, map50 = 0.0, FA/frame = 49.37, empty_scene = True
 
 | 优先级 | 事项 | 阻塞 / 备注 |
 | :--- | :--- | :--- |
-| P0 | 查清 SNL `gt.txt` 与帧编号的对齐，`num_gt=0` 原因 | 阻塞所有真实盲测结论 |
+| P0 | 获取覆盖 SNL 617–900 的测试区框标注 | **根因已定位**：现有 gt 只到 527；阻塞全部真实盲测与 Sim-to-Real 对照 |
 | P0 | 获取 VSMB 原始数据（45 序列 / 1024×1024） | 本地缺失，主基准无法跑 |
-| P1 | 合并 `feat/proposal-dataset-v2`（2 提交）到 main | 已验收，可直接合 |
-| P1 | 合并 `docs/legacy-module-index`（1 提交） | 内容与 proposal 分支重复，注意去重 |
-| P1 | 主工作区 3 个教学文档的删除：确认是并发会话有意删除还是误操作 | 未经确认不要恢复 |
-| P2 | push main 的 5 个本地领先提交到 origin | 需协作者确认时机 |
+| P1 | push main 的 2 个本地领先提交到 origin | 已合入工单 4，待 push |
+| P1 | 主工作区 3 个教学文档的删除：确认是并发会话有意删除还是误操作 | 未经确认不要恢复（合并时已用 stash 完整保护） |
 | P2 | 评估 `feat/snl-arch-upgrade` 的 backbone 工作是否合入 | 6 提交，YOLO11-P2 依赖 |
-| P3 | 全量生成 120 组 / 3000 帧申报书数据集 | 脚本已就位，未跑全量 |
+| P2 | 合并 `docs/handoff-2026-11-25` 交接文档 | 1 提交 |
 | P3 | 历史脚本/目录归档到 `legacy/` | 耦合深，见 legacy-module-index 前置条件 |
+
+### 2026-11-25 已完成（从原待办移除）
+
+- ✅ `feat/proposal-dataset-v2` 合入 main（`d5e40cf`，经 stash 保护并发状态后快进）
+- ✅ `docs/legacy-module-index` 随 proposal 分支合入
+- ✅ 全量生成 120 组 / 3000 帧数据集（199MB，manifest 已核对，真实底图不越界）
+- ✅ SNL `num_gt=0` 根因查清：GT 只覆盖 150–527，测试区 617–900 无标注
 
 ---
 
@@ -159,4 +184,4 @@ num_gt = 0, num_pred = 13973, map50 = 0.0, FA/frame = 49.37, empty_scene = True
 
 ---
 
-**一句话总结**：v2.0 底座和申报书数据集工具链都已就位且可运行，但**实测盲测结论仍未建立**——SNL 有帧无有效 GT、VSMB 数据缺失。接手第一件事应该是修数据对齐，而不是继续加模型。
+**一句话总结**：v2.0 底座、工单 4 数据集工具链和 120 组 / 3000 帧全量生成都已就位并合入 main，但**实测盲测结论仍未建立**——SNL 标注只到 527 帧（测试区 617–900 无 GT）、VSMB 原始数据缺失。接手第一件事应该是补齐测试区标注，而不是继续加模型。
