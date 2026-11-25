@@ -1,0 +1,4 @@
+split_name,domain,num_frames,num_gt,num_pred,map_50,map_30,precision_50,recall_50,fa_per_frame_50,recall_at_1_fa,mota,idf1,hota,id_switches,condition_tag,pixel_f1,region_iou,avg_frame_time_ms,speed_mae_mps
+snl_test_416_527_synth_only,real,112,910,15998,0.0000,0.0001,0.0003,0.0055,142.7946,0.0000,-17.5692,0.0006,0.0016,0,synth_only,0.0000,0.0000,,0.0000
+snl_test_416_527_snl_train,real,112,910,15998,0.0000,0.0001,0.0003,0.0055,142.7946,0.0000,-17.5692,0.0006,0.0016,0,snl_train,0.0000,0.0000,,0.0000
+snl_test_416_527_snl_plus_aug,real,112,910,15998,0.0000,0.0001,0.0003,0.0055,142.7946,0.0000,-17.5692,0.0006,0.0016,0,snl_plus_aug,0.0000,0.0000,,0.0000

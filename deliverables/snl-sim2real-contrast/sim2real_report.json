@@ -1,0 +1,93 @@
+{
+  "experiment": "SNL Sim-to-Real gain contrast (annotated subset)",
+  "git_commit": "d5e40cf57c2a7aa0885e090583af3f26d3344677",
+  "seed": 42,
+  "dataset_version": "proposal_v2",
+  "train_frame_range": [
+    150,
+    399
+  ],
+  "guard_gap_frames": 16,
+  "guard_frame_range": [
+    400,
+    415
+  ],
+  "test_frame_range": [
+    416,
+    527
+  ],
+  "test_num_frames": 112,
+  "test_num_gt": 910,
+  "snl_background_window": [
+    150,
+    399
+  ],
+  "regimes": {
+    "synth_only": {
+      "z_thresh": 1.2,
+      "train_tune_map_grid": {
+        "1.2": 0.12187773174935472,
+        "1.6": 0.1204102908229206,
+        "2.0": 0.09680416377147691,
+        "2.4": 0.06808606469016548,
+        "2.8": 0.038653346681415054,
+        "3.2": 0.022872948176215102,
+        "4.0": 0.0062156038532585065,
+        "5.0": 0.001016600816295217
+      },
+      "map_50": 7.5267198554869796e-06,
+      "map_30": 7.96100645191427e-05,
+      "fa_per_frame": 142.79464285714286,
+      "recall_50": 0.005494505494505495,
+      "num_gt": 910,
+      "num_pred": 15998
+    },
+    "snl_train": {
+      "z_thresh": 1.2,
+      "train_tune_map_grid": {
+        "1.2": 0.0,
+        "1.6": 0.0,
+        "2.0": 0.0,
+        "2.4": 0.0,
+        "2.8": 0.0,
+        "3.2": 0.0,
+        "4.0": 0.0,
+        "5.0": 0.0
+      },
+      "map_50": 7.5267198554869796e-06,
+      "map_30": 7.96100645191427e-05,
+      "fa_per_frame": 142.79464285714286,
+      "recall_50": 0.005494505494505495,
+      "num_gt": 910,
+      "num_pred": 15998
+    },
+    "snl_plus_aug": {
+      "z_thresh": 1.2,
+      "train_tune_map_grid": {
+        "1.2": 0.11966177299027556,
+        "1.6": 0.11822101280795841,
+        "2.0": 0.09504408806654097,
+        "2.4": 0.06684813624125338,
+        "2.8": 0.03795055855993478,
+        "3.2": 0.022457076391193008,
+        "4.0": 0.006102592874108351,
+        "5.0": 0.0009981171650898495
+      },
+      "map_50": 7.5267198554869796e-06,
+      "map_30": 7.96100645191427e-05,
+      "fa_per_frame": 142.79464285714286,
+      "recall_50": 0.005494505494505495,
+      "num_gt": 910,
+      "num_pred": 15998
+    }
+  },
+  "map50_gain_snl_vs_synth": 0.0,
+  "map50_gain_aug_vs_snl": 0.0,
+  "artifacts": {
+    "config": "deliverables\\snl-sim2real-contrast\\config.json",
+    "metrics": "deliverables\\snl-sim2real-contrast\\metrics.json",
+    "summary": "deliverables\\snl-sim2real-contrast\\summary.csv",
+    "froc": "deliverables\\snl-sim2real-contrast\\froc_curve.csv"
+  },
+  "note": "z_thresh tuned per regime on its own training data (synth sim / real SNL 150..399 / real SNL + real-bg-augmented sim), evaluated on frozen real SNL 416..527. Backgrounds restricted to frames 150..399."
+}
