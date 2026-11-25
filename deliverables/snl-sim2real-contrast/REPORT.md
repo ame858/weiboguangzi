@@ -55,6 +55,8 @@ gain snl-synth=+0.0000 | aug-snl=+0.0000
 - `sim2real_report.json`：完整对照记录（含 git_commit、seed、帧范围、三组指标、每档 z 的调参曲线）
 - `sim2real_contrast.csv`：对照表
 - `config.json` / `metrics.json` / `summary.csv` / `froc_curve.csv`：`ExperimentRunner` 标准分区产物
+  - 注：`metrics.json` 与 `froc_curve.csv` 中的 FROC 曲线已下采样（检测器失效导致每 split 约 16000 个噪声框、每框一个点，原始 9.7MB）。标量指标（mAP/recall/FA）未改动，完整曲线可由脚本重跑复现。
+
 
 ## 六、下一步建议
 
