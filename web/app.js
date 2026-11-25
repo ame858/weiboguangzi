@@ -66,6 +66,8 @@ const state = {
   sides: [],
   videoResult: null,
   stepNo: 0,
+  seqGen: 0,
+  renderGen: 0,
   v2: { runs: [], runId: "", data: null },
 };
 
@@ -359,6 +361,8 @@ async function reloadSequences(refresh = false) {
 /* ------------------------------------------------------------ input */
 async function loadSequence(path) {
   if (!path) return;
+  const gen = ++state.seqGen;
+  state.renderGen += 1;
   setV2Mode(false);
   state.kind = "sequence";
   state.seq = path;
@@ -378,6 +382,7 @@ async function loadSequence(path) {
     const res = await apiJson(
       `/api/results?runs_root=${encodeURIComponent(state.runsRoot)}&sequence_dir=${encodeURIComponent(path)}`
     );
+    if (gen !== state.seqGen || state.kind !== "sequence") return;
     const auto = res.auto || {};
     const match = auto.predictions
       ? (res.predictions || []).find((p) => p.path === auto.predictions)
@@ -394,18 +399,20 @@ async function loadSequence(path) {
       : [];
     state.slots = padSlots(state.results.length ? [0] : []);
     state.quadSlot = 0;
-    await refreshMeta();
+    await refreshMeta(gen);
+    if (gen !== state.seqGen || state.kind !== "sequence") return;
     await render();
   } catch (err) {
+    if (gen !== state.seqGen || state.kind !== "sequence") return;
     $("stageEmpty").classList.remove("hidden");
     $("stageEmpty").textContent = `载入失败：${err.message}`;
   }
 }
 
-async function refreshMeta() {
+async function refreshMeta(seqGen = state.seqGen) {
   const first = state.results[state.slots.find((i) => i >= 0)] || state.results[0];
   try {
-    state.meta = await apiJson("/api/browser/meta", {
+    const meta = await apiJson("/api/browser/meta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -415,12 +422,27 @@ async function refreshMeta() {
         evaluate_dir: first?.evaluate || null,
       }),
     });
+    if (seqGen !== state.seqGen || state.kind !== "sequence") return;
+    state.meta = meta;
     state.count = state.meta.count || 0;
   } catch {
+    if (seqGen !== state.seqGen || state.kind !== "sequence") return;
     state.meta = null;
     state.count = 0;
   }
   updateCtx();
+}
+
+function revealView(el, animate = false) {
+  if (!el) return;
+  el.classList.remove("view-enter");
+  if (animate) {
+    el.classList.remove("hidden");
+    void el.offsetWidth;
+    el.classList.add("view-enter");
+  } else {
+    el.classList.remove("hidden");
+  }
 }
 
 /* ------------------------------------------------------------ render */
@@ -436,38 +458,64 @@ async function render() {
     );
     const empty = $("splitStage");
     if (empty) empty.classList.add("hidden");
-    $("stageEmpty").classList.remove("hidden");
+    const animEmpty = Boolean(ui.enterView);
+    ui.enterView = false;
     $("stageEmpty").textContent = "该序列还没有检测结果。在左侧勾选模型并点「运行检测」。";
+    revealView($("stageEmpty"), animEmpty);
     updateCtx();
     return;
   }
   $("stageEmpty").classList.add("hidden");
   $("videoStage").classList.add("hidden");
-  const splitHost = $("splitStage");
-  if (splitHost) splitHost.classList.add("hidden");
+  const rGen = ++state.renderGen;
+  const view = state.view;
+  const anim = Boolean(ui.enterView);
 
-  if (state.view === "quad") {
-    $("columns").classList.add("hidden");
-    $("pills").classList.add("hidden");
-    $("colHint").classList.add("hidden");
-    $("quad").classList.remove("hidden");
-    $("quadBar").classList.remove("hidden");
+  // 先完成数据拉取与 DOM 填充再一次性切显隐并触发入场动效，避免闪白或 1->0->1 爆闪
+  if (view === "quad") {
     await renderQuad();
-  } else if (state.view === "split") {
+    if (rGen !== state.renderGen || state.kind !== "sequence" || state.view !== view) return;
+    ui.enterView = false;
+    $("columns").classList.add("hidden");
+    $("pills").classList.add("hidden");
+    $("colHint").classList.add("hidden");
+    $("splitStage")?.classList.add("hidden");
+    const hasErr = !$("stageEmpty").classList.contains("hidden");
+    if (hasErr) {
+      $("quad").classList.add("hidden");
+      $("quadBar").classList.add("hidden");
+    } else {
+      revealView($("quad"), anim);
+      $("quadBar").classList.remove("hidden");
+    }
+  } else if (view === "split") {
+    await renderSplit();
+    if (rGen !== state.renderGen || state.kind !== "sequence" || state.view !== view) return;
+    ui.enterView = false;
     $("columns").classList.add("hidden");
     $("pills").classList.add("hidden");
     $("colHint").classList.add("hidden");
     $("quad").classList.add("hidden");
     $("quadBar").classList.add("hidden");
-    await renderSplit();
+    revealView($("splitStage"), anim);
   } else {
+    await renderColumns();
+    if (rGen !== state.renderGen || state.kind !== "sequence" || state.view !== view) return;
+    ui.enterView = false;
     $("quad").classList.add("hidden");
     $("quadBar").classList.add("hidden");
-    $("columns").classList.remove("hidden");
-    $("pills").classList.remove("hidden");
-    await renderColumns();
+    $("splitStage")?.classList.add("hidden");
+    const hasErr = !$("stageEmpty").classList.contains("hidden");
+    if (hasErr) {
+      $("columns").classList.add("hidden");
+      $("pills").classList.add("hidden");
+    } else {
+      revealView($("columns"), anim);
+      $("pills").classList.remove("hidden");
+    }
   }
   await renderStrip();
+  if (rGen !== state.renderGen || state.kind !== "sequence" || state.view !== view) return;
   updateCtx();
 }
 
@@ -707,6 +755,7 @@ async function patchColumns(bySlot, filled) {
 }
 
 async function renderColumns() {
+  const rGen = state.renderGen;
   const filled = state.slots
     .map((idx, slot) => ({ slot, idx }))
     .filter((x) => x.idx >= 0 && state.results[x.idx]);
@@ -716,10 +765,12 @@ async function renderColumns() {
     try {
       data = await fetchFrame(filled, state.index);
     } catch (err) {
+      if (rGen !== state.renderGen || state.kind !== "sequence") return;
       $("stageEmpty").classList.remove("hidden");
       $("stageEmpty").textContent = err.message;
       return;
     }
+    if (rGen !== state.renderGen || state.kind !== "sequence") return;
     state.count = data.count;
     state.index = data.index;
     frameLabel();
@@ -732,6 +783,7 @@ async function renderColumns() {
 
   const sig = columnSig(filled);
   const patched = sig === ui.colSig && (await patchColumns(bySlot, filled));
+  if (rGen !== state.renderGen || state.kind !== "sequence") return;
   if (!patched) {
     rebuildColumns(bySlot);
     ui.colSig = sig;
@@ -864,6 +916,7 @@ function renderMetricTable(sides) {
 }
 
 async function renderQuad() {
+  const rGen = state.renderGen;
   const idx = state.slots[state.quadSlot] >= 0 ? state.slots[state.quadSlot] : state.slots.find((i) => i >= 0);
   const result = state.results[idx];
   if (!result) return;
@@ -884,10 +937,12 @@ async function renderQuad() {
         }),
       });
     } catch (err) {
+      if (rGen !== state.renderGen || state.kind !== "sequence") return;
       $("stageEmpty").classList.remove("hidden");
       $("stageEmpty").textContent = err.message;
       return;
     }
+    if (rGen !== state.renderGen || state.kind !== "sequence") return;
     state.quadCache.set(key, data);
     if (state.quadCache.size > 60) state.quadCache.clear();
   }
@@ -927,6 +982,7 @@ async function renderQuad() {
 }
 
 async function renderStrip() {
+  const rGen = state.renderGen;
   if (state.kind === "video" || !state.results.length) {
     $("strip").classList.add("hidden");
     return;
@@ -935,7 +991,7 @@ async function renderStrip() {
   const key = `${state.seq}|${result?.detect || ""}|${settingsKey()}`;
   if (state.stripKey !== key || !state.strip) {
     try {
-      state.strip = await apiJson("/api/browser/strip", {
+      const stripData = await apiJson("/api/browser/strip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -945,12 +1001,16 @@ async function renderStrip() {
           width: 96,
         }),
       });
+      if (rGen !== state.renderGen || state.kind !== "sequence") return;
+      state.strip = stripData;
       state.stripKey = key;
     } catch {
+      if (rGen !== state.renderGen || state.kind !== "sequence") return;
       $("strip").classList.add("hidden");
       return;
     }
   }
+  if (rGen !== state.renderGen || state.kind !== "sequence") return;
   const host = $("strip");
   host.classList.remove("hidden");
   const statuses = Array.isArray(state.strip.frame_status) ? state.strip.frame_status : [];
@@ -988,21 +1048,42 @@ function renderVideo() {
   ["columns", "quad", "quadBar", "pills", "strip", "stageEmpty", "colHint"].forEach((id) =>
     $(id).classList.add("hidden")
   );
-  const splitHost = $("splitStage");
-  if (splitHost) splitHost.classList.add("hidden");
-  $("videoStage").classList.remove("hidden");
+  $("splitStage")?.classList.add("hidden");
+  const anim = Boolean(ui.enterView);
+  ui.enterView = false;
+  revealView($("videoStage"), anim);
+
   const res = state.videoResult;
+  let empty = $("videoEmptyCard");
   if (!res) {
     $("videoOverlay").classList.add("hidden");
-    $("videoDownloads").innerHTML = `<span class="lbl">上传视频并点「运行检测」后，这里显示叠加结果。</span>`;
+    $("videoDownloads").innerHTML = "";
+    $("videoDownloads").classList.add("hidden");
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.id = "videoEmptyCard";
+      empty.className = "video-empty";
+      empty.innerHTML = `
+        <div class="video-empty-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+        </div>
+        <b>实测视频动目标检测</b>
+        <p>1. 上传本地视频或粘贴路径 → 2. 在左侧首帧框选识别区域 → 3. 点击左下角「运行检测」，叠加结果视频将在这里播放。</p>
+        <button class="btn btn-sm" id="btnVideoEmptyPick" type="button">选择视频文件</button>`;
+      $("videoStage").prepend(empty);
+      empty.querySelector("#btnVideoEmptyPick").addEventListener("click", () => $("videoFile").click());
+    }
+    empty.classList.remove("hidden");
     return;
   }
+  empty?.classList.add("hidden");
   $("videoOverlay").classList.remove("hidden");
   if (res.overlay_url) $("videoOverlay").src = `${res.overlay_url}&t=${Date.now()}`;
   const links = [];
   if (res.overlay_download) links.push(`<a class="btn btn-sm" href="${res.overlay_download}">下载叠加视频</a>`);
   if (res.csv_download) links.push(`<a class="btn btn-sm" href="${res.csv_download}">下载 predictions.csv</a>`);
   $("videoDownloads").innerHTML = links.join("");
+  $("videoDownloads").classList.toggle("hidden", !links.length);
 }
 
 /* ------------------------------------------------------------ playback */
@@ -1024,11 +1105,12 @@ function togglePlayback() {
   state.playing = true;
   setPlayState(true);
   const step = async () => {
-    if (!state.playing) return;
+    if (!state.playing || state.kind !== "sequence") return;
     const t0 = performance.now();
     state.index = (state.index + 1) % state.count;
     try {
       await paintFrame();
+      if (!state.playing || state.kind !== "sequence") return;
       markStrip();
       // 灯箱开着时跟着换图，否则播放会在灯箱里定格
       if (ui.lightbox.open) paintLightbox();
@@ -1041,9 +1123,10 @@ function togglePlayback() {
 
 async function gotoFrame(index) {
   stopPlayback();
-  if (!state.count) return;
+  if (state.kind !== "sequence" || !state.count) return;
   state.index = Math.max(0, Math.min(state.count - 1, index));
   await paintFrame();
+  if (state.kind !== "sequence") return;
   markStrip();
   if (ui.lightbox.open) paintLightbox();
 }
@@ -1141,6 +1224,7 @@ async function runDetection() {
   if (!methods.length) { alert("请至少选择一个模型"); return; }
   if (!state.seq) { alert("请先选择输入序列"); return; }
 
+  const jobSeqGen = state.seqGen;
   $("btnRun").disabled = true;
   setBadge($("runBadge"), "提交中", "warn");
   try {
@@ -1159,7 +1243,7 @@ async function runDetection() {
     });
     streamJob(job_id, async (ok, result) => {
       $("btnRun").disabled = false;
-      if (!ok || !result) return;
+      if (!ok || !result || state.kind !== "sequence" || jobSeqGen !== state.seqGen) return;
       const done = (result.results || []).filter((r) => r.ok && r.detect);
       if (!done.length) return;
       state.results = done.map((r) => ({
@@ -1177,7 +1261,8 @@ async function runDetection() {
       colCache.clear();
       ui.colSig = "";
       state.stripKey = "";
-      await refreshMeta();
+      await refreshMeta(jobSeqGen);
+      if (state.kind !== "sequence" || jobSeqGen !== state.seqGen) return;
       await render();
     });
   } catch (err) {
@@ -1197,6 +1282,7 @@ async function runVideoDetection() {
   const crop = $("useCrop").checked
     ? [Number($("cropX").value), Number($("cropY").value), Number($("cropW").value), Number($("cropH").value)]
     : null;
+  const jobSeqGen = state.seqGen;
   $("btnRun").disabled = true;
   setBadge($("runBadge"), "提交中", "warn");
   try {
@@ -1213,7 +1299,7 @@ async function runVideoDetection() {
     });
     streamJob(job_id, (ok, result) => {
       $("btnRun").disabled = false;
-      if (!ok || !result) return;
+      if (!ok || !result || state.kind !== "video" || jobSeqGen !== state.seqGen) return;
       state.videoResult = result;
       renderVideo();
     });
@@ -1460,9 +1546,14 @@ async function runV2Benchmark() {
 
 /* ------------------------------------------------------------ video crop */
 function setKind(kind) {
+  // 递增代际号，立即作废此前仍在路上的序列/帧异步请求，防止快速切换时后发先至覆写画布
+  state.seqGen += 1;
+  state.renderGen += 1;
+  ui.enterView = true;
   setV2Mode(false);
   state.kind = kind;
   [...$("kindSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.kind === kind));
+  requestAnimationFrame(() => syncSegIndicator($("kindSeg")));
   $("seqPane").classList.toggle("hidden", kind !== "sequence");
   $("videoPane").classList.toggle("hidden", kind !== "video");
   $("cropSection").classList.toggle("hidden", kind !== "video" || !state.videoInfo);
@@ -1474,8 +1565,10 @@ function setKind(kind) {
     stopPlayback();
     frameLabel();
     renderVideo();
-  } else if (state.seq) {
-    loadSequence(state.seq);
+  } else {
+    const video = $("videoOverlay");
+    if (video && !video.paused) video.pause();
+    if (state.seq) loadSequence(state.seq);
   }
   updateCtx();
 }
@@ -1547,6 +1640,7 @@ const ui = {
   theme: "light",
   split: 0.5,
   stripDrag: false,
+  enterView: false,
 };
 
 const ICON_SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.6v2.4M12 19v2.4M2.6 12h2.4M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"></path></svg>';
@@ -1618,8 +1712,29 @@ function applyTheme(theme, persist = true) {
   requestAnimationFrame(syncSegIndicators);
 }
 
+let _themeFadeTimer = null;
+
 function toggleTheme() {
-  applyTheme(ui.theme === "dark" ? "light" : "dark");
+  const next = ui.theme === "dark" ? "light" : "dark";
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!document.startViewTransition || reduce) {
+    document.documentElement.classList.add("theme-fade");
+    applyTheme(next);
+    clearTimeout(_themeFadeTimer);
+    _themeFadeTimer = setTimeout(() => document.documentElement.classList.remove("theme-fade"), 260);
+    return;
+  }
+  const rect = $("btnTheme")?.getBoundingClientRect();
+  const x = rect ? rect.left + rect.width / 2 : window.innerWidth - 36;
+  const y = rect ? rect.top + rect.height / 2 : 32;
+  const r = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+  const vt = document.startViewTransition(() => applyTheme(next));
+  vt.ready.then(() => {
+    document.documentElement.animate(
+      { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+      { duration: 380, easing: "cubic-bezier(0.2, 0, 0, 1)", pseudoElement: "::view-transition-new(root)" }
+    );
+  }).catch(() => {});
 }
 
 /* ---------------------------------------------------------- T09 分段滑块 */
@@ -1880,15 +1995,16 @@ function onGlobalKeydown(ev) {
   if (typingTarget()) return;
   if (!$("metricSheet").classList.contains("hidden")) return;
 
-  if (key === "?") { ev.preventDefault(); toggleKbdHelp(); return; }
+  if (key === "?") { ev.preventDefault(); if (!ev.repeat) toggleKbdHelp(); return; }
   // v2 看板里不响应播放/步进/灯箱等影像键（速查卡除外）
   if (isV2Mode()) return;
   if (key === "h" || key === "H") { if (!ev.repeat) setPeek(true); return; }
-  if (key === "t" || key === "T") { ev.preventDefault(); toggleTheme(); return; }
-  if (key === "[") { ev.preventDefault(); toggleRail(); return; }
-  if (key === "0") { ev.preventDefault(); resetZoom(); return; }
+  if (key === "t" || key === "T") { ev.preventDefault(); if (!ev.repeat) toggleTheme(); return; }
+  if (key === "[") { ev.preventDefault(); if (!ev.repeat) toggleRail(); return; }
+  if (key === "0") { ev.preventDefault(); if (!ev.repeat) resetZoom(); return; }
   if (key === "f" || key === "F") {
     ev.preventDefault();
+    if (ev.repeat) return;
     if (ui.lightbox.open) closeLightbox();
     else openLightbox(0);
     return;
@@ -1899,13 +2015,13 @@ function onGlobalKeydown(ev) {
     return;
   }
 
-  if (!state.results.length || state.view === "video") return;
+  if (!state.results.length || state.kind === "video") return;
 
   if (key === ",") { ev.preventDefault(); gotoFrame(state.index - 1); return; }
   if (key === ".") { ev.preventDefault(); gotoFrame(state.index + 1); return; }
   if (key === "j" || key === "J") { ev.preventDefault(); gotoFrame(state.index - 1); return; }
   if (key === "l" || key === "L") { ev.preventDefault(); gotoFrame(state.index + 1); return; }
-  if (key === "k" || key === "K") { ev.preventDefault(); togglePlayback(); return; }
+  if (key === "k" || key === "K") { ev.preventDefault(); if (!ev.repeat) togglePlayback(); return; }
   if (key === "Home") { ev.preventDefault(); gotoFrame(0); return; }
   if (key === "End") { ev.preventDefault(); gotoFrame(state.count - 1); return; }
 }
@@ -2182,11 +2298,11 @@ function bindSplitDrag(host) {
 }
 
 async function renderSplit() {
+  const rGen = state.renderGen;
   const filled = state.slots
     .map((idx, slot) => ({ slot, idx }))
     .filter((x) => x.idx >= 0 && state.results[x.idx]);
   const host = ensureSplitStage();
-  host.classList.remove("hidden");
 
   if (!filled.length) {
     host.innerHTML = `<span class="lbl" style="color:#9aa3ad;">先在左侧勾选结果，再切到卷帘对比。</span>`;
@@ -2196,9 +2312,11 @@ async function renderSplit() {
   try {
     data = await fetchFrame(filled, state.index);
   } catch (err) {
+    if (rGen !== state.renderGen || state.kind !== "sequence") return;
     host.innerHTML = `<span class="lbl" style="color:#ff8a80;">${esc(err.message)}</span>`;
     return;
   }
+  if (rGen !== state.renderGen || state.kind !== "sequence") return;
   state.count = data.count;
   state.index = data.index;
   frameLabel();
@@ -2305,7 +2423,8 @@ function bind() {
 
   $("kindSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-kind]");
-    if (btn) setKind(btn.dataset.kind);
+    if (!btn || btn.dataset.kind === state.kind) return;
+    setKind(btn.dataset.kind);
   });
 
   $("seqSelect").addEventListener("change", (e) => loadSequence(e.target.value));
@@ -2457,9 +2576,10 @@ function bind() {
 
   $("viewSeg").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-view]");
-    if (!btn) return;
+    if (!btn || btn.dataset.view === state.view) return;
     [...$("viewSeg").children].forEach((b) => b.classList.toggle("on", b === btn));
     state.view = btn.dataset.view;
+    ui.enterView = true;
     stopPlayback();
     render();
   });
@@ -2537,7 +2657,7 @@ function bind() {
     if (e.code === "Space") {
       if (state.count <= 1) return;   // 单帧时 togglePlayback 会直接返回，别白吞按键
       e.preventDefault();
-      togglePlayback();
+      if (!e.repeat) togglePlayback();
     }
     else if (e.code === "ArrowLeft") { e.preventDefault(); gotoFrame(state.index - 1); }
     else if (e.code === "ArrowRight") { e.preventDefault(); gotoFrame(state.index + 1); }

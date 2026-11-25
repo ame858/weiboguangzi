@@ -1663,15 +1663,23 @@
     html[data-theme="dark"] .pills.has-delta,
     html[data-theme="dark"] .file-box.has-file { background: var(--pressed); color: var(--on-pressed); }
 
+    /* ---- T05 暗房切换过渡 ---- */
+    ::view-transition-old(root),
+    ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+    html.theme-fade, html.theme-fade * {
+      transition: background-color 240ms var(--e-standard), color 240ms var(--e-standard), border-color 240ms var(--e-standard) !important;
+    }
+
     /* ---- T04 左侧栏收折 ---- */
-    .app { transition: grid-template-columns var(--t-mid) var(--e-standard), gap var(--t-mid) var(--e-standard); }
+    .app { transition: grid-template-columns 280ms var(--e-standard), gap 280ms var(--e-standard); }
     .app.rail-collapsed { grid-template-columns: 0 minmax(0, 1fr); gap: 0; }
     .app.rail-collapsed .rail {
       opacity: 0;
       transform: translateX(-12px);
       pointer-events: none;
     }
-    .rail { transition: opacity var(--t-base) var(--e-standard), transform var(--t-mid) var(--e-standard); }
+    .rail { min-width: 0; transition: opacity var(--t-base) var(--e-standard), transform var(--t-mid) var(--e-standard); }
+    .rail-head, .rail-body, .rail-foot { min-width: 260px; }
     .rail-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
     .rail-toggle { flex: 0 0 auto; }
     #btnRailOpen { display: none; }
@@ -1942,9 +1950,43 @@
     .heat.fp_high { background: #f9ab00; }
     .heat.unknown { display: none; }
 
+    /* ---- 视图切换入场动效 ---- */
+    @keyframes viewIn {
+      from { opacity: 0; transform: translateY(4px) scale(0.992); }
+      to { opacity: 1; transform: none; }
+    }
+    .view-enter { animation: viewIn 200ms var(--e-standard) both; }
+    #quad.view-enter { animation: none; }
+    #quad.view-enter figure { animation: viewIn 200ms var(--e-standard) both; }
+    #quad.view-enter figure:nth-child(2) { animation-delay: 24ms; }
+    #quad.view-enter figure:nth-child(3) { animation-delay: 48ms; }
+    #quad.view-enter figure:nth-child(4) { animation-delay: 72ms; }
+
+    .video-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      background: var(--surface);
+      border: 1.5px dashed var(--outline-2);
+      border-radius: var(--r-lg);
+      padding: 32px;
+    }
+    .video-empty-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--pressed); color: var(--cta);
+      display: grid; place-items: center;
+    }
+    .video-empty b { font-size: 15px; font-weight: 600; color: var(--on); }
+    .video-empty p { margin: 0; font-size: 12.5px; color: var(--on-2); max-width: 360px; line-height: 1.6; }
+
     @media (prefers-reduced-motion: reduce) {
       .app, .rail, .seg .seg-indicator, .col-img img { transition: none !important; }
       .col-img.skeleton::after { animation: none !important; }
+      .view-enter, #quad.view-enter figure { animation: none !important; }
     }
 
     /* ---------- 响应式断点 ---------- */
