@@ -364,6 +364,11 @@ async function loadSequence(path) {
   state.seq = path;
   state.index = 0;
   state.quadCache.clear();
+  // 帧缓存与结构签名都绑定在「序列 + 槽位 + 设置」上，换序列必须整段作废，
+  // 否则重进同一批帧会命中上一轮缓存，看到的是旧图。缩放一并复位。
+  colCache.clear();
+  ui.colSig = "";
+  resetZoom();
   state.strip = null;
   state.stripKey = "";
   state.videoResult = null;
@@ -596,7 +601,7 @@ function colFootHtml(side) {
         <div class="col-foot">
           <span>IoU <span class="hot" data-metric="iou">${fmt(s.iou)}</span></span>
           <span>虚警/帧 <span class="hot" data-metric="fp_per_frame">${fmt(s.fp_per_frame, 2)}</span></span>
-          <span>重叠 <span class="hot">${esc(side.overlap)}</span> px</span>
+          <span>重叠 <span class="hot" data-overlap="1">${esc(side.overlap)}</span> px</span>
         </div>`;
 }
 
@@ -674,9 +679,13 @@ async function patchColumns(bySlot, filled) {
       const timer = setTimeout(() => box.classList.add("skeleton"), 130);
       jobs.push(
         (async () => {
+          // 先在离屏 Image 上解码完，再换 live 节点的 src：
+          // 直接改 live src 会让旧帧先被清空、画面闪白一下
+          const pre = new Image();
+          pre.src = side.image;
+          try { await pre.decode(); } catch { /* 解码失败也照常收尾 */ }
           img.src = side.image;
           img.alt = side.label;
-          try { await img.decode(); } catch { /* 解码失败也照常收尾 */ }
           clearTimeout(timer);
           box.classList.remove("skeleton");
         })()
@@ -689,6 +698,9 @@ async function patchColumns(bySlot, filled) {
       const digits = el.dataset.metric === "fp_per_frame" ? 2 : 3;
       el.textContent = fmt(s[el.dataset.metric], digits);
     });
+    // 重叠像素数跟帧走，之前只换了 IoU 与虚警，这一格会停在上一帧
+    const ov = col.querySelector(".col-foot .hot[data-overlap]");
+    if (ov) ov.textContent = String(side.overlap);
   }
   await Promise.all(jobs);
   return true;
@@ -778,8 +790,6 @@ function renderPills(sides) {
   ].join("");
 }
 
-const BEST_KEYS = { target_f1: "up", iou: "up", fp_per_frame: "down" };
-
 /* 并列第一全部高亮；全员打平则视为无最优，避免整行变绿 */
 function bestIndices(sides, key, better) {
   if (sides.length < 2) return new Set();
@@ -793,8 +803,9 @@ function bestIndices(sides, key, better) {
 }
 
 function bestMap(sides) {
+  // 10 行全部参与比较，不再只挑 F1 / IoU / 虚警三项
   const map = new Map();
-  for (const [key, better] of Object.entries(BEST_KEYS)) map.set(key, bestIndices(sides, key, better));
+  METRIC_ROWS.forEach((r) => map.set(r.key, bestIndices(sides, r.key, r.better)));
   return map;
 }
 
@@ -1019,6 +1030,8 @@ function togglePlayback() {
     try {
       await paintFrame();
       markStrip();
+      // 灯箱开着时跟着换图，否则播放会在灯箱里定格
+      if (ui.lightbox.open) paintLightbox();
     } catch { stopPlayback(); return; }
     const interval = 1000 / Number($("fps").value || 8);
     state.timer = setTimeout(step, Math.max(0, interval - (performance.now() - t0)));
@@ -1032,6 +1045,7 @@ async function gotoFrame(index) {
   state.index = Math.max(0, Math.min(state.count - 1, index));
   await paintFrame();
   markStrip();
+  if (ui.lightbox.open) paintLightbox();
 }
 
 /* ------------------------------------------------------------ run */
@@ -1159,6 +1173,9 @@ async function runDetection() {
       state.quadSlot = 0;
       state.index = 0;
       state.quadCache.clear();
+      // 重新跑检测会产出新的 predictions，旧帧缓存必须整段作废
+      colCache.clear();
+      ui.colSig = "";
       state.stripKey = "";
       await refreshMeta();
       await render();
@@ -1330,7 +1347,7 @@ function renderFroc(points) {
   legend.innerHTML = "";
   if (tip) tip.classList.add("hidden");
   if (!points.length) {
-    svg.innerHTML = '<text x="360" y="150" text-anchor="middle" font-size="13" fill="#747775">本次运行无 FROC 曲线数据</text>';
+    svg.innerHTML = '<text x="360" y="150" text-anchor="middle" font-size="13" fill="var(--on-3)">本次运行无 FROC 曲线数据</text>';
     return;
   }
   const groups = new Map();
@@ -1347,24 +1364,24 @@ function renderFroc(points) {
   const parts = [];
   for (let i = 0; i <= 4; i++) {
     const gy = top + (ph * i) / 4;
-    parts.push(`<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="#e1e5ec" stroke-width="1"/>`);
-    parts.push(`<text x="${left - 8}" y="${gy + 4}" text-anchor="end" font-size="11" fill="#747775">${(1 - i / 4).toFixed(2)}</text>`);
+    parts.push(`<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="var(--outline)" stroke-width="1"/>`);
+    parts.push(`<text x="${left - 8}" y="${gy + 4}" text-anchor="end" font-size="11" fill="var(--on-3)">${(1 - i / 4).toFixed(2)}</text>`);
   }
   for (let i = 0; i <= 5; i++) {
     const gx = left + (pw * i) / 5;
-    parts.push(`<line x1="${gx}" y1="${top}" x2="${gx}" y2="${top + ph}" stroke="#e1e5ec" stroke-width="1"/>`);
-    parts.push(`<text x="${gx}" y="${top + ph + 18}" text-anchor="middle" font-size="11" fill="#747775">${((maxFa * i) / 5).toFixed(2)}</text>`);
+    parts.push(`<line x1="${gx}" y1="${top}" x2="${gx}" y2="${top + ph}" stroke="var(--outline)" stroke-width="1"/>`);
+    parts.push(`<text x="${gx}" y="${top + ph + 18}" text-anchor="middle" font-size="11" fill="var(--on-3)">${((maxFa * i) / 5).toFixed(2)}</text>`);
   }
   // 1.0 FA 参考虚线（呼应指标表中的 Recall@1FA）
   if (maxFa >= 1) {
     const x1 = px(1);
-    parts.push(`<line x1="${x1.toFixed(2)}" y1="${top}" x2="${x1.toFixed(2)}" y2="${top + ph}" stroke="#0b57d0" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4"/>`);
-    parts.push(`<text x="${Math.min(x1 + 4, width - right - 38).toFixed(2)}" y="${top + 12}" font-size="10.5" fill="#0b57d0" opacity="0.8">1.0 FA</text>`);
+    parts.push(`<line x1="${x1.toFixed(2)}" y1="${top}" x2="${x1.toFixed(2)}" y2="${top + ph}" stroke="var(--cta)" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4"/>`);
+    parts.push(`<text x="${Math.min(x1 + 4, width - right - 38).toFixed(2)}" y="${top + 12}" font-size="10.5" fill="var(--cta)" opacity="0.8">1.0 FA</text>`);
   }
-  parts.push(`<line x1="${left}" y1="${top + ph}" x2="${width - right}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
-  parts.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${top + ph}" stroke="#c4c9d4" stroke-width="1"/>`);
-  parts.push(`<text x="${left + pw / 2}" y="${height - 6}" text-anchor="middle" font-size="11" fill="#444746">FA / frame</text>`);
-  parts.push(`<text x="14" y="${top + ph / 2}" text-anchor="middle" font-size="11" fill="#444746" transform="rotate(-90 14 ${top + ph / 2})">Recall</text>`);
+  parts.push(`<line x1="${left}" y1="${top + ph}" x2="${width - right}" y2="${top + ph}" stroke="var(--outline-2)" stroke-width="1"/>`);
+  parts.push(`<line x1="${left}" y1="${top}" x2="${left}" y2="${top + ph}" stroke="var(--outline-2)" stroke-width="1"/>`);
+  parts.push(`<text x="${left + pw / 2}" y="${height - 6}" text-anchor="middle" font-size="11" fill="var(--on-2)">FA / frame</text>`);
+  parts.push(`<text x="14" y="${top + ph / 2}" text-anchor="middle" font-size="11" fill="var(--on-2)" transform="rotate(-90 14 ${top + ph / 2})">Recall</text>`);
   let colorIndex = 0;
   for (const group of groups.values()) {
     const color = V2_FROC_COLORS[colorIndex % V2_FROC_COLORS.length];
@@ -1380,7 +1397,7 @@ function renderFroc(points) {
       const faText = fmt(Number(p.fa_per_frame), 3);
       const rcText = fmt(Number(p.recall), 3);
       const label = esc(`${group.split} · ${group.domain}`);
-      parts.push(`<circle class="froc-pt" cx="${cx}" cy="${cy}" r="3.2" fill="${color}" stroke="#ffffff" stroke-width="1.2" data-label="${label}" data-fa="${faText}" data-recall="${rcText}"><title>${label} | FA/frame ${faText} | Recall ${rcText}</title></circle>`);
+      parts.push(`<circle class="froc-pt" cx="${cx}" cy="${cy}" r="3.2" fill="${color}" stroke="var(--surface-white)" stroke-width="1.2" data-label="${label}" data-fa="${faText}" data-recall="${rcText}"><title>${label} | FA/frame ${faText} | Recall ${rcText}</title></circle>`);
     });
     legend.insertAdjacentHTML("beforeend", `<span class="lg"><span class="sw" style="background:${color}"></span>${esc(`${group.split} · ${group.domain}`)}</span>`);
     colorIndex++;
@@ -2197,6 +2214,8 @@ async function renderSplit() {
     <span class="split-tag right">${esc(rightTag)}</span>
     <div class="split-divider" role="separator" aria-orientation="vertical" aria-label="卷帘分隔线（可拖动，方向键微调）" tabindex="0"></div>`;
   host.style.setProperty("--split", `${(ui.split * 100).toFixed(2)}%`);
+  // 卷帘视图也要跟随「像素锐化缩放」，否则和并排视图观感不一致
+  host.classList.toggle("pixelated", $("dispPixelated").checked);
   bindSplitDrag(host);
   renderPills(state.sides);
   renderMetricTable(state.sides);
@@ -2480,6 +2499,7 @@ function bind() {
     const on = $("dispPixelated").checked;
     $("columns").classList.toggle("pixelated", on);
     $("quad").classList.toggle("pixelated", on);
+    $("splitStage")?.classList.toggle("pixelated", on);
   });
 
   $("btnAllMetrics").addEventListener("click", () => {

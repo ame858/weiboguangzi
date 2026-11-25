@@ -1655,6 +1655,13 @@
     html[data-theme="dark"] .col.col-empty { background: #171b22; }
     html[data-theme="dark"] .m3-menu-item:hover { background: var(--surface-2); }
     html[data-theme="dark"] input[type="file"]::file-selector-button { background: var(--surface-2); }
+    /* 暗房模式下主色块上的文字要用深色，浅色 --on 会糊成一片 */
+    html[data-theme="dark"] .btn-primary,
+    html[data-theme="dark"] .btn-primary:hover,
+    html[data-theme="dark"] .method.on .tick { color: #062e6f; }
+    html[data-theme="dark"] .m3-menu-item.is-selected,
+    html[data-theme="dark"] .pills.has-delta,
+    html[data-theme="dark"] .file-box.has-file { background: var(--pressed); color: var(--on-pressed); }
 
     /* ---- T04 左侧栏收折 ---- */
     .app { transition: grid-template-columns var(--t-mid) var(--e-standard), gap var(--t-mid) var(--e-standard); }
@@ -2284,6 +2291,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>
