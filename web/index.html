@@ -1571,6 +1571,327 @@
 
     .hidden { display: none !important; }
 
+    /* ==================================================================
+       大师级交互升级（T01–T12）
+       ================================================================== */
+
+    /* ---- T05 暗房模式：M3 Dark Tonal；--viz-* 三原色保持不变 ---- */
+    html[data-theme="dark"] {
+      --canvas: #111318;
+      --surface: #1b1f27;
+      --surface-2: #242934;
+      --surface-white: #1f242e;
+      --field: #1f242e;
+      --field-hover: #262c38;
+      --pressed: #1e3a5f;
+      --pressed-hover: #24466f;
+      --on-pressed: #d3e3fd;
+      --on: #e3e6eb;
+      --on-2: #b6bcc6;
+      --on-3: #8a919c;
+      --outline: #2c323d;
+      --outline-2: #3a414d;
+      --cta: #8ab4f8;
+      --cta-hover: #a8c7fa;
+      --cta-active: #c2d7fb;
+      --cta-disabled: #2b303a;
+      --ok: #6dd58c; --ok-bg: #1c3325;
+      --warn: #fdd663; --warn-bg: #332b12;
+      --err: #f2b8b5; --err-bg: #3a1f1e;
+      --stage: #0b0d10;
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+      --shadow-2: 0 6px 24px rgba(0, 0, 0, 0.55);
+      --shadow-menu: 0 8px 30px rgba(0, 0, 0, 0.6);
+      color-scheme: dark;
+    }
+    html[data-theme="dark"] .col.col-empty { background: #171b22; }
+    html[data-theme="dark"] .m3-menu-item:hover { background: var(--surface-2); }
+    html[data-theme="dark"] input[type="file"]::file-selector-button { background: var(--surface-2); }
+
+    /* ---- T04 左侧栏收折 ---- */
+    .app { transition: grid-template-columns var(--t-mid) var(--e-standard), gap var(--t-mid) var(--e-standard); }
+    .app.rail-collapsed { grid-template-columns: 0 minmax(0, 1fr); gap: 0; }
+    .app.rail-collapsed .rail {
+      opacity: 0;
+      transform: translateX(-12px);
+      pointer-events: none;
+    }
+    .rail { transition: opacity var(--t-base) var(--e-standard), transform var(--t-mid) var(--e-standard); }
+    .rail-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .rail-toggle { flex: 0 0 auto; }
+    #btnRailOpen { display: none; }
+    .app.rail-collapsed #btnRailOpen { display: inline-flex; }
+
+    /* ---- T01 同步缩放 / 平移 / 十字准星 ---- */
+    .col-img { position: relative; }
+    .col-img img {
+      transform-origin: center center;
+      transition: transform var(--t-fast) linear;
+      backface-visibility: hidden;
+    }
+    #columns.zooming .col-img img { transition: none; }
+    .col-img.panning { cursor: grabbing; }
+    .col-img .xhair-h, .col-img .xhair-v {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(255, 255, 255, 0.55);
+      box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      z-index: 3;
+    }
+    .col-img .xhair-h { height: 1px; left: 0; right: 0; }
+    .col-img .xhair-v { width: 1px; top: 0; bottom: 0; }
+    .col-img.crosshair-on .xhair-h, .col-img.crosshair-on .xhair-v { opacity: 1; }
+    .zoom-badge {
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      z-index: 6;
+      padding: 2px 9px;
+      border-radius: var(--r-full);
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+      display: none;
+    }
+    .zoom-badge.show { display: block; }
+    .col-zoom-btn {
+      margin-left: 6px;
+      flex: 0 0 auto;
+      width: 26px;
+      height: 26px;
+      border-radius: var(--r-full);
+      border: 1px solid var(--outline);
+      background: var(--surface-white);
+      color: var(--on-2);
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .col-zoom-btn:hover { background: var(--pressed); color: var(--cta); border-color: transparent; }
+
+    /* ---- T03 原图预览角标 + 灯箱 ---- */
+    .peek-badge {
+      position: absolute;
+      left: 50%;
+      top: 10px;
+      transform: translateX(-50%);
+      z-index: 7;
+      padding: 3px 12px;
+      border-radius: var(--r-full);
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      font-size: 11.5px;
+      pointer-events: none;
+    }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: rgba(6, 8, 12, 0.94);
+      padding: 24px;
+    }
+    .lightbox img {
+      max-width: 94vw;
+      max-height: 78vh;
+      object-fit: contain;
+      border-radius: var(--r-md);
+      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.6);
+    }
+    .lightbox-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: center; }
+    .lightbox-pill {
+      padding: 5px 14px;
+      border-radius: var(--r-full);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.08);
+      color: #eef1f5;
+      font-size: 12.5px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .lightbox-pill.on { background: var(--cta); border-color: var(--cta); color: #04101f; font-weight: 600; }
+    .lightbox-cap { color: #c7ccd4; font-size: 12px; }
+
+    /* ---- T07 快捷键速查 ---- */
+    .kbd-help {
+      position: fixed;
+      inset: 0;
+      z-index: 88;
+      display: grid;
+      place-items: center;
+      background: rgba(6, 8, 12, 0.55);
+      padding: 24px;
+    }
+    .kbd-card {
+      width: min(560px, 94vw);
+      background: var(--surface-white);
+      border-radius: var(--r-menu);
+      padding: 20px 22px 22px;
+      box-shadow: var(--shadow-menu);
+    }
+    .kbd-card h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+    .kbd-card .lbl { font-size: 11.5px; }
+    .kbd-grid { display: grid; grid-template-columns: auto 1fr; gap: 9px 16px; margin-top: 14px; font-size: 12.5px; }
+    .kbd {
+      display: inline-block;
+      min-width: 22px;
+      padding: 1px 7px;
+      border-radius: 6px;
+      background: var(--surface-2);
+      border: 1px solid var(--outline);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-align: center;
+      color: var(--on);
+    }
+
+    /* ---- T06 最优指标高亮 ---- */
+    .col-head .f1.is-best { background: var(--ok-bg); color: var(--ok); box-shadow: inset 0 0 0 1px rgba(20, 108, 46, 0.25); }
+    .col-foot .hot.is-best { color: var(--ok); }
+    #metricTable td.val.is-best { color: var(--ok); font-weight: 600; background: var(--ok-bg); border-radius: 6px; }
+
+    /* ---- T08 复制反馈 + 导出 ---- */
+    .btn.copied { background: var(--ok-bg) !important; color: var(--ok) !important; border-color: transparent !important; }
+
+    /* ---- T09 分段控制器滑块 + 骨架屏 ---- */
+    .seg { position: relative; }
+    .seg .seg-indicator {
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: 3px;
+      width: 0;
+      border-radius: var(--r-full);
+      background: var(--surface-white);
+      box-shadow: var(--shadow-1);
+      transition: left var(--t-mid) var(--e-standard), width var(--t-mid) var(--e-standard);
+      z-index: 0;
+      pointer-events: none;
+    }
+    .seg.has-indicator button { position: relative; z-index: 1; background: transparent; }
+    .seg.has-indicator button.on { background: transparent; }
+    .col-img.skeleton::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(100deg, rgba(255, 255, 255, 0.03) 30%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.03) 70%);
+      background-size: 220% 100%;
+      animation: skel 1.2s ease-in-out infinite;
+      z-index: 2;
+    }
+    @keyframes skel { from { background-position: 220% 0; } to { background-position: -220% 0; } }
+
+    /* ---- T10 模型路径芯片 ---- */
+    .path-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: var(--r-sm);
+      background: var(--surface-white);
+      border: 1px solid var(--outline);
+      color: var(--on);
+      font-family: inherit;
+      font-size: 12.5px;
+      text-align: left;
+      cursor: text;
+      min-width: 0;
+    }
+    .path-chip:hover { background: var(--field-hover); border-color: var(--outline-2); }
+    .path-chip .pc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .path-chip .pc-empty { color: var(--on-3); }
+
+    /* ---- T11 卷帘对比 ---- */
+    .split-stage {
+      position: relative;
+      flex: 1;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--stage);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      user-select: none;
+      touch-action: none;
+    }
+    .split-stage img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    .split-stage img.split-top { clip-path: inset(0 calc(100% - var(--split, 50%)) 0 0); }
+    .split-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: var(--split, 50%);
+      width: 2px;
+      margin-left: -1px;
+      background: #fff;
+      cursor: ew-resize;
+      z-index: 5;
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+    }
+    .split-divider::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    }
+    .split-tag {
+      position: absolute;
+      top: 10px;
+      z-index: 6;
+      padding: 3px 10px;
+      border-radius: var(--r-full);
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      font-size: 11.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .split-tag.left { left: 10px; }
+    .split-tag.right { right: 10px; }
+
+    /* ---- T12 胶片条质量微条 ---- */
+    .strip button { position: relative; }
+    .strip button .heat {
+      position: absolute;
+      left: 3px;
+      right: 3px;
+      bottom: 2px;
+      height: 3px;
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .heat.ok { background: #40eb78; }
+    .heat.missed { background: #ff5c5c; }
+    .heat.fp_high { background: #f9ab00; }
+    .heat.unknown { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .app, .rail, .seg .seg-indicator, .col-img img { transition: none !important; }
+      .col-img.skeleton::after { animation: none !important; }
+    }
+
     /* ---------- 响应式断点 ---------- */
     @media (max-width: 1180px) {
       .app { grid-template-columns: 260px minmax(0, 1fr); gap: 14px; }
@@ -1623,15 +1944,20 @@
     <!-- ============ 左侧控制栏 ============ -->
     <aside class="rail">
       <div class="rail-head">
-        <div class="brand">
-          <div class="brand-icon" aria-hidden="true">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <circle cx="12" cy="12" r="9" opacity=".45"></circle>
-              <circle cx="12" cy="12" r="4.5"></circle>
-              <path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path>
-            </svg>
+        <div class="rail-head-row">
+          <div class="brand">
+            <div class="brand-icon" aria-hidden="true">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="9" opacity=".45"></circle>
+                <circle cx="12" cy="12" r="4.5"></circle>
+                <path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path>
+              </svg>
+            </div>
+            <b>Ka 视频 SAR</b>
           </div>
-          <b>Ka 视频 SAR</b>
+          <button class="icon-btn rail-toggle" id="btnRailToggle" type="button" title="收起侧栏 ([)" aria-label="收起侧栏">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+          </button>
         </div>
         <div class="ctx" id="ctxChip"><span class="ctx-dot"></span><span id="ctxText">未选择输入</span></div>
       </div>
@@ -1693,7 +2019,11 @@
           </div>
           <div id="modelField" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
             <span class="lbl">模型部署 JSON</span>
-            <input type="text" id="modelPath" placeholder="留空用默认权重" />
+            <button class="path-chip" id="modelChip" type="button" title="留空用默认权重">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;opacity:.7;"><path d="M4 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L12.4 7H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+              <span class="pc-name pc-empty" id="modelChipName">默认权重</span>
+            </button>
+            <input type="text" id="modelPath" class="hidden" placeholder="留空用默认权重" />
           </div>
         </section>
 
@@ -1748,6 +2078,9 @@
     <!-- ============ 右侧主舞台 ============ -->
     <main class="stage">
       <div class="stage-bar">
+        <button class="icon-btn" id="btnRailOpen" type="button" title="展开侧栏 ([)" aria-label="展开侧栏">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
         <span class="mono" id="frameLabel">帧 0 / 0</span>
         <button class="play-btn" id="btnPlay" aria-label="播放/暂停"><span id="playIcon" style="display:inline-flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span id="playLabel">播放</span></button>
         <button class="icon-btn" id="btnPrev" title="上一帧 (←)" aria-label="上一帧"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6z"/><path d="M20 5v14l-10-7z"/></svg></button>
@@ -1755,9 +2088,11 @@
         <div class="seg" id="viewSeg" style="margin-left:8px;">
           <button data-view="compare" class="on">并排</button>
           <button data-view="quad">四宫格</button>
+          <button data-view="split">卷帘</button>
         </div>
         <span style="flex:1;"></span>
         <button class="btn btn-sm" id="btnAllMetrics">全部指标</button>
+        <button class="btn btn-sm" id="btnExportPng" title="把当前三栏拼成一张 PNG 保存">保存对比图</button>
         <div class="pop-wrap">
           <button class="btn btn-sm" id="btnDisplay">显示</button>
           <div class="popover hidden" id="displayPop">
@@ -1778,6 +2113,7 @@
           <option value="12">12 FPS</option>
           <option value="16">16 FPS</option>
         </select>
+        <button class="icon-btn" id="btnTheme" type="button" title="切换暗房模式 (T)" aria-label="切换明暗主题"><span id="themeIcon" style="display:inline-flex;"></span></button>
       </div>
 
       <!-- v2.0 评测看板：实测盲测区与仿真消融区永久隔离，绝不合并求平均 -->
@@ -1848,9 +2184,13 @@
 
       <div class="sheet hidden" id="metricSheet">
         <div class="sheet-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px;">
             <b style="font-size:15px; font-weight:600;">全部指标</b>
-            <button class="btn btn-sm" id="btnCloseSheet">关闭</button>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="btn btn-sm" id="btnCopyMd">复制 Markdown</button>
+              <button class="btn btn-sm" id="btnCopyCsv">复制 CSV</button>
+              <button class="btn btn-sm" id="btnCloseSheet">关闭</button>
+            </div>
           </div>
           <table class="metrics" id="metricTable"></table>
         </div>
@@ -1858,6 +2198,37 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=8"></script>
+  <!-- T03 灯箱（放大查看单幅图） -->
+  <div class="lightbox hidden" id="lightbox" role="dialog" aria-modal="true" aria-label="放大预览">
+    <img id="lightboxImg" alt="放大预览" />
+    <div class="lightbox-bar" id="lightboxBar"></div>
+    <div class="lightbox-cap" id="lightboxCap"></div>
+  </div>
+
+  <!-- T07 快捷键速查 -->
+  <div class="kbd-help hidden" id="kbdHelp" role="dialog" aria-modal="true" aria-label="快捷键速查">
+    <div class="kbd-card">
+      <h3>快捷键</h3>
+      <div class="lbl">按 ? 打开或关闭本卡片，Esc 关闭所有浮层。</div>
+      <div class="kbd-grid">
+        <span><span class="kbd">←</span> <span class="kbd">→</span></span><span>上一帧 / 下一帧</span>
+        <span><span class="kbd">空格</span></span><span>播放 / 暂停</span>
+        <span><span class="kbd">,</span> <span class="kbd">.</span></span><span>逐帧步进（精细定位）</span>
+        <span><span class="kbd">J</span> <span class="kbd">K</span> <span class="kbd">L</span></span><span>后退 / 播放暂停 / 前进</span>
+        <span><span class="kbd">Home</span> <span class="kbd">End</span></span><span>跳到首帧 / 末帧</span>
+        <span><span class="kbd">1</span> <span class="kbd">2</span> <span class="kbd">3</span></span><span>切换第 N 个模型（并进入灯箱）</span>
+        <span><span class="kbd">H</span></span><span>按住隐藏预测与真值轮廓，只看原图</span>
+        <span><span class="kbd">F</span></span><span>放大当前帧（灯箱）</span>
+        <span><span class="kbd">0</span></span><span>重置缩放与平移</span>
+        <span><span class="kbd">滚轮</span></span><span>以鼠标为中心同步缩放三栏</span>
+        <span><span class="kbd">拖动</span></span><span>平移已放大的画面</span>
+        <span><span class="kbd">双击</span></span><span>复位到 1×</span>
+        <span><span class="kbd">[</span></span><span>收起 / 展开左侧栏</span>
+        <span><span class="kbd">T</span></span><span>切换暗房模式</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>
